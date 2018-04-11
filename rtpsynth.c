@@ -35,6 +35,30 @@ rsynth_ctor(int srate, int ptime)
     return ((void *)rip);
 }
 
+int
+rsynth_next_pkt_pa(void *_rip, int plen, int pt, void *buf, unsigned int blen)
+{
+    struct rsynth_inst *rip;
+    struct rtp_hdr *rnp;
+    int rs;
+
+    rip = (struct rsynth_inst *)_rip;
+    rs = RTP_HDR_LEN(&rip->model) + plen;
+    if (rs > blen)
+        return (-1);
+    rnp = (struct rtp_hdr *)buf;
+    memset(rnp, '\0', rs);
+    memcpy(rnp, &rip->model, sizeof(struct rtp_hdr));
+    rnp->pt = pt;
+    rnp->seq = htons(rip->seq_l);
+    rnp->ts = htonl(rip->ts_l);
+    rip->model.mbt = 0;
+    rip->seq_l++;
+    rip->ts_l++;
+
+    return (rs);
+}
+
 void *
 rsynth_next_pkt(void *_rip, int plen, int pt)
 {
@@ -47,14 +71,7 @@ rsynth_next_pkt(void *_rip, int plen, int pt)
     rnp = malloc(rs);
     if (rnp == NULL)
         return (NULL);
-    memset(rnp, '\0', rs);
-    memcpy(rnp, &rip->model, sizeof(struct rtp_hdr));
-    rnp->pt = pt;
-    rnp->seq = htons(rip->seq_l);
-    rnp->ts = htonl(rip->ts_l);
-    rip->model.mbt = 0;
-    rip->seq_l++;
-    rip->ts_l++;
+    rsynth_next_pkt_pa(_rip, plen, pt, rnp, rs);
 
     return (rnp);
 }
