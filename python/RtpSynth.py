@@ -22,16 +22,9 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from ctypes import cdll, c_double, c_void_p, c_int, c_long, Structure, \
-  pointer, POINTER
+  pointer, POINTER, create_string_buffer, c_uint
 from math import modf
-#from time import sleep
 import sys
-
-class timespec(Structure):
-    _fields_ = [
-        ('tv_sec', c_long),
-        ('tv_nsec', c_long)
-    ]
 
 _rsth = cdll.LoadLibrary('librtpsynth.so')
 _rsth.rsynth_ctor.argtypes = [c_int, c_int]
@@ -39,6 +32,9 @@ _rsth.rsynth_ctor.restype = c_void_p
 _rsth.rsynth_dtor.argtypes = [c_void_p,]
 _rsth.rsynth_next_pkt.restype = c_void_p
 _rsth.rsynth_next_pkt.argtypes = [c_void_p, c_int, c_int]
+_rsth.rsynth_next_pkt_pa.restype = c_int
+_rsth.rsynth_next_pkt_pa.rgtypes = [c_void_p, c_int, c_int, c_void_p, c_uint]
+
 _rsth.rsynth_pkt_free.argtypes = [c_void_p,]
 ##_rsth.prdic_addband.argtypes = [c_void_p, c_double]
 ##_rsth.prdic_addband.restype = c_int
@@ -59,8 +55,10 @@ class RtpSynth(object):
             raise Exception('rsynth_ctor() failed')
 
     def next_pkt(self, plen, pt):
-        pkt = self._rsth.rsynth_next_pkt(self._hndl, plen, pt)
-        return (pkt)
+        #pkt = self._rsth.rsynth_next_pkt(self._hndl, plen, pt)
+        pkt = create_string_buffer(256)
+        plen = self._rsth.rsynth_next_pkt_pa(self._hndl, plen, pt, pkt, 256)
+        return (pkt.raw[:plen])
 
     def pkt_free(self, pkt):
         self._rsth.rsynth_pkt_free(pkt)
@@ -84,7 +82,7 @@ if __name__ == '__main__':
     rs = RtpSynth(8000, 30)
     while i < 100000:
         rp = rs.next_pkt(170, 0)
-        rs.pkt_free(rp)
+        #rs.pkt_free(rp)
         i += 1
 
 ##    elp.set_epoch(0.0)
