@@ -26,6 +26,12 @@ rsynth_ctor(int srate, int ptime, int plen, int pt)
     rip->srate = srate;
     rip->ptime = ptime;
     rip->plen = plen;
+    rip->model.version = 2;
+    rip->model.mbt = 1;
+    rip->model.pt = pt;
+    rip->model.ts = random() & 0xfffffffe;
+    rip->model.seq = random() & 0xffff;
+    rip->model.ssrc = random();
     return ((void *)rip);
 }
 
