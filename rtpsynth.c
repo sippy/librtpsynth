@@ -10,12 +10,11 @@
 struct rsynth_inst {
     int srate;
     int ptime;
-    int plen;
     struct rtp_hdr model;
 };
 
 void *
-rsynth_ctor(int srate, int ptime, int plen, int pt)
+rsynth_ctor(int srate, int ptime)
 {
     struct rsynth_inst *rip;
 
@@ -25,10 +24,8 @@ rsynth_ctor(int srate, int ptime, int plen, int pt)
     memset(&rip, '\0', sizeof(struct rsynth_inst));
     rip->srate = srate;
     rip->ptime = ptime;
-    rip->plen = plen;
     rip->model.version = 2;
     rip->model.mbt = 1;
-    rip->model.pt = pt;
     rip->model.ts = random() & 0xfffffffe;
     rip->model.seq = random() & 0xffff;
     rip->model.ssrc = random();
@@ -36,22 +33,30 @@ rsynth_ctor(int srate, int ptime, int plen, int pt)
 }
 
 void *
-rsynth_next(void *_rip)
+rsynth_next_pkt(void *_rip, int plen, int pt)
 {
     struct rsynth_inst *rip;
     struct rtp_hdr *rnp;
     size_t rs;
 
     rip = (struct rsynth_inst *)_rip;
-    rs = RTP_HDR_LEN(&rip->model) + rip->plen;
+    rs = RTP_HDR_LEN(&rip->model) + plen;
     rnp = malloc(rs);
     if (rnp == NULL)
         return (NULL);
     memset(rnp, '\0', rs);
     memcpy(rnp, &rip->model, sizeof(struct rtp_hdr));
+    rnp->pt = pt;
     rip->model.mbt = 0;
 
     return (rnp);
+}
+
+void
+rsynth_pkt_free(void *rnp)
+{
+
+    free(rnp);
 }
 
 void
