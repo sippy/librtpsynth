@@ -39,9 +39,19 @@ void *
 rsynth_next(void *_rip)
 {
     struct rsynth_inst *rip;
+    struct rtp_hdr *rnp;
+    size_t rs;
 
     rip = (struct rsynth_inst *)_rip;
-    return (NULL);
+    rs = RTP_HDR_LEN(&rip->model) + rip->plen;
+    rnp = malloc(rs);
+    if (rnp == NULL)
+        return (NULL);
+    memset(rnp, '\0', rs);
+    memcpy(rnp, &rip->model, sizeof(struct rtp_hdr));
+    rip->model.mbt = 0;
+
+    return (rnp);
 }
 
 void
