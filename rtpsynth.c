@@ -1,3 +1,4 @@
+#include <arpa/inet.h>
 #include <machine/endian.h>
 
 #include <stdint.h>
@@ -10,6 +11,8 @@
 struct rsynth_inst {
     int srate;
     int ptime;
+    long long ts_l;
+    long long seq_l;
     struct rtp_hdr model;
 };
 
@@ -26,9 +29,9 @@ rsynth_ctor(int srate, int ptime)
     rip->ptime = ptime;
     rip->model.version = 2;
     rip->model.mbt = 1;
-    rip->model.ts = random() & 0xfffffffe;
-    rip->model.seq = random() & 0xffff;
     rip->model.ssrc = random();
+    rip->ts_l = random() & 0xfffffffe;
+    rip->seq_l = random() & 0xffff;
     return ((void *)rip);
 }
 
@@ -47,7 +50,11 @@ rsynth_next_pkt(void *_rip, int plen, int pt)
     memset(rnp, '\0', rs);
     memcpy(rnp, &rip->model, sizeof(struct rtp_hdr));
     rnp->pt = pt;
+    rnp->seq = htons(rip->seq_l);
+    rnp->ts = htonl(rip->ts_l);
     rip->model.mbt = 0;
+    rip->seq_l++;
+    rip->ts_l++;
 
     return (rnp);
 }
