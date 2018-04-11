@@ -36,8 +36,10 @@ class timespec(Structure):
 _rsth = cdll.LoadLibrary('librtpsynth.so')
 _rsth.rsynth_ctor.argtypes = [c_int, c_int]
 _rsth.rsynth_ctor.restype = c_void_p
-##_rsth.prdic_procrastinate.argtypes = [c_void_p,]
 _rsth.rsynth_dtor.argtypes = [c_void_p,]
+_rsth.rsynth_next_pkt.restype = c_void_p
+_rsth.rsynth_next_pkt.argtypes = [c_void_p, c_int, c_int]
+_rsth.rsynth_pkt_free.argtypes = [c_void_p,]
 ##_rsth.prdic_addband.argtypes = [c_void_p, c_double]
 ##_rsth.prdic_addband.restype = c_int
 ##_rsth.prdic_useband.argtypes = [c_void_p, c_int]
@@ -56,12 +58,12 @@ class RtpSynth(object):
         if not bool(self._hndl):
             raise Exception('rsynth_ctor() failed')
 
-##    def procrastinate(self):
-##        self._rsth.prdic_procrastinate(self._hndl)
+    def next_pkt(self, plen, pt):
+        pkt = self._rsth.rsynth_next_pkt(self._hndl, plen, pt)
+        return (pkt)
 
-##    def addband(self, freq_hz):
-##        r = self._rsth.prdic_addband(self._hndl, freq_hz)
-##        return int(r)
+    def pkt_free(self, pkt):
+        self._rsth.rsynth_pkt_free(pkt)
 
 ##    def useband(self, bandnum):
 ##        self._rsth.prdic_useband(self._hndl, c_int(bandnum))
@@ -80,6 +82,11 @@ class RtpSynth(object):
 if __name__ == '__main__':
     i = 0
     rs = RtpSynth(8000, 30)
+    while i < 100000:
+        rp = rs.next_pkt(170, 0)
+        rs.pkt_free(rp)
+        i += 1
+
 ##    elp.set_epoch(0.0)
 ##    while i < 20000:
 ##        elp.procrastinate()
