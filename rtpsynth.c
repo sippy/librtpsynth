@@ -24,7 +24,7 @@ rsynth_ctor(int srate, int ptime)
     rip = malloc(sizeof(struct rsynth_inst));
     if (rip == NULL)
         return (NULL);
-    memset(&rip, '\0', sizeof(struct rsynth_inst));
+    memset(rip, '\0', sizeof(struct rsynth_inst));
     rip->srate = srate;
     rip->ptime = ptime;
     rip->model.version = 2;
