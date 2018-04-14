@@ -33,7 +33,7 @@ _rsth.rsynth_dtor.argtypes = [c_void_p,]
 _rsth.rsynth_next_pkt.restype = c_void_p
 _rsth.rsynth_next_pkt.argtypes = [c_void_p, c_int, c_int]
 _rsth.rsynth_next_pkt_pa.restype = c_int
-_rsth.rsynth_next_pkt_pa.rgtypes = [c_void_p, c_int, c_int, c_void_p, c_uint]
+_rsth.rsynth_next_pkt_pa.rgtypes = [c_void_p, c_int, c_int, c_void_p, c_uint, c_int]
 
 _rsth.rsynth_pkt_free.argtypes = [c_void_p,]
 ##_rsth.prdic_addband.argtypes = [c_void_p, c_double]
@@ -56,8 +56,8 @@ class RtpSynth(object):
 
     def next_pkt(self, plen, pt):
         #pkt = self._rsth.rsynth_next_pkt(self._hndl, plen, pt)
-        pkt = create_string_buffer(256)
-        plen = self._rsth.rsynth_next_pkt_pa(self._hndl, plen, pt, pkt, 256)
+        pkt = create_string_buffer('Hello, SIP!'.encode(), 256)
+        plen = self._rsth.rsynth_next_pkt_pa(self._hndl, plen, pt, pkt, 256, 1)
         return (pkt.raw[:plen])
 
     def pkt_free(self, pkt):
