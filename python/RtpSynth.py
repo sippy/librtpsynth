@@ -54,10 +54,14 @@ class RtpSynth(object):
         if not bool(self._hndl):
             raise Exception('rsynth_ctor() failed')
 
-    def next_pkt(self, plen, pt):
-        #pkt = self._rsth.rsynth_next_pkt(self._hndl, plen, pt)
-        pkt = create_string_buffer('Hello, SIP!'.encode(), 256)
-        plen = self._rsth.rsynth_next_pkt_pa(self._hndl, plen, pt, pkt, 256, 1)
+    def next_pkt(self, plen, pt, pload = None):
+        if pload != None:
+            pkt = create_string_buffer(pload, 256)
+            filled = 1
+        else:
+            pkt = create_string_buffer(256)
+            filled = 0
+        plen = self._rsth.rsynth_next_pkt_pa(self._hndl, plen, pt, pkt, 256, filled)
         return (pkt.raw[:plen])
 
     def pkt_free(self, pkt):
