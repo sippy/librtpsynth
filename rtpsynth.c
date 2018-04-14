@@ -13,6 +13,7 @@ struct rsynth_inst {
     int ptime;
     long long ts_l;
     long long seq_l;
+    int ts_inc;
     struct rtp_hdr model;
 };
 
@@ -27,6 +28,7 @@ rsynth_ctor(int srate, int ptime)
     memset(rip, '\0', sizeof(struct rsynth_inst));
     rip->srate = srate;
     rip->ptime = ptime;
+    rip->ts_inc = 80 * ptime / 10;
     rip->model.version = 2;
     rip->model.mbt = 1;
     rip->model.ssrc = random();
@@ -54,7 +56,7 @@ rsynth_next_pkt_pa(void *_rip, int plen, int pt, void *buf, unsigned int blen)
     rnp->ts = htonl(rip->ts_l);
     rip->model.mbt = 0;
     rip->seq_l++;
-    rip->ts_l++;
+    rip->ts_l += rip->ts_inc;
 
     return (rs);
 }
