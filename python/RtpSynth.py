@@ -21,8 +21,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from ctypes import cdll, c_double, c_void_p, c_int, c_long, Structure, \
-  pointer, POINTER, create_string_buffer, c_uint
+from ctypes import cdll, c_void_p, c_int, create_string_buffer, c_uint
 from math import modf
 import sys
 
@@ -33,16 +32,9 @@ _rsth.rsynth_dtor.argtypes = [c_void_p,]
 _rsth.rsynth_next_pkt.restype = c_void_p
 _rsth.rsynth_next_pkt.argtypes = [c_void_p, c_int, c_int]
 _rsth.rsynth_next_pkt_pa.restype = c_int
-_rsth.rsynth_next_pkt_pa.rgtypes = [c_void_p, c_int, c_int, c_void_p, c_uint, c_int]
+_rsth.rsynth_next_pkt_pa.argtypes = [c_void_p, c_int, c_int, c_void_p, c_uint, c_int]
 
 _rsth.rsynth_pkt_free.argtypes = [c_void_p,]
-##_rsth.prdic_addband.argtypes = [c_void_p, c_double]
-##_rsth.prdic_addband.restype = c_int
-##_rsth.prdic_useband.argtypes = [c_void_p, c_int]
-##_rsth.prdic_set_epoch.argtypes = [c_void_p, POINTER(timespec)]
-
-#h = _rsth.prdic_init(200.0, 0.0)
-#sleep(20)
 
 class RtpSynth(object):
     _hndl = None
@@ -68,16 +60,6 @@ class RtpSynth(object):
     def pkt_free(self, pkt):
         self._rsth.rsynth_pkt_free(pkt)
 
-##    def useband(self, bandnum):
-##        self._rsth.prdic_useband(self._hndl, c_int(bandnum))
-
-##    def set_epoch(self, dtime):
-##        ts = timespec()
-##        tv_frac, tv_sec = modf(dtime)
-##        ts.tv_sec = int(tv_sec)
-##        ts.tv_nsec = int(tv_frac * 1e+09)
-##        self._rsth.prdic_set_epoch(self._hndl, pointer(ts))
-
     def __del__(self):
         if bool(self._hndl):
             self._rsth.rsynth_dtor(self._hndl)
@@ -87,14 +69,6 @@ if __name__ == '__main__':
     rs = RtpSynth(8000, 30)
     while i < 100000:
         rp = rs.next_pkt(170, 0)
-        #rs.pkt_free(rp)
         i += 1
 
-##    elp.set_epoch(0.0)
-##    while i < 20000:
-##        elp.procrastinate()
-##        i += 1
-##        sys.stdout.write('%d\r' % i)
-##        sys.stdout.flush()
-##    #print(h)
     del rs
