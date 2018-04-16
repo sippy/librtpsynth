@@ -8,8 +8,8 @@ kwargs = {'name':'RtpSynth',
       'author':'Maksym Sobolyev',
       'author_email':'sobomax@gmail.com',
       'url':'https://github.com/sippy/librtpsynth.git',
-      'packages':['librtpsynth',],
-      'package_dir':{'librtpsynth':'python'}
+      'packages':['rtpsynth',],
+      'package_dir':{'rtpsynth':'python'}
      }
 
 import sys
