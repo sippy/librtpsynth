@@ -55,13 +55,14 @@ class RtpSynth(object):
             raise Exception('rsynth_ctor() failed')
 
     def next_pkt(self, plen, pt, pload = None):
+        pktlen = plen + 32
         if pload != None:
-            pkt = create_string_buffer(pload, 256)
+            pkt = create_string_buffer(pload, pktlen)
             filled = 1
         else:
-            pkt = create_string_buffer(256)
+            pkt = create_string_buffer(pktlen)
             filled = 0
-        plen = self._rsth.rsynth_next_pkt_pa(self._hndl, plen, pt, pkt, 256, filled)
+        plen = self._rsth.rsynth_next_pkt_pa(self._hndl, plen, pt, pkt, pktlen, filled)
         return (pkt.raw[:plen])
 
     def pkt_free(self, pkt):
