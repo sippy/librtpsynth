@@ -17,19 +17,27 @@ def get_ex_mod():
         return None
     return [module1]
 
+with open("README.md", "r") as fh:
+    long_description = fh.read()
+
 kwargs = {'name':'RtpSynth',
       'version':'1.0',
       'description':'Library optimized to generate sequence of the RTP packets',
+      'long_description': long_description,
+      'long_description_content_type': "text/markdown",
       'author':'Maksym Sobolyev',
       'author_email':'sobomax@gmail.com',
       'url':'https://github.com/sippy/librtpsynth.git',
       'packages':['rtpsynth',],
       'package_dir':{'rtpsynth':'python'},
       'ext_modules': get_ex_mod(),
+      'classifiers': [
+            'License :: OSI Approved :: BSD License',
+            'Operating System :: POSIX',
+            'Programming Language :: C',
+            'Programming Language :: Python'
+      ]
      }
-
-import sys
 
 if __name__ == '__main__':
     setup(**kwargs)
-
