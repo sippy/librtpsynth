@@ -1,0 +1,5 @@
+LIBRTPSYNTH_ddd0b90ff306 {
+    global: rsynth_ctor; rsynth_next_pkt; rsynth_next_pkt_pa; rsynth_pkt_free;
+            rsynth_dtor;
+    local: *;
+};
