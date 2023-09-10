@@ -23,9 +23,31 @@
 
 from ctypes import cdll, c_void_p, c_int, create_string_buffer, c_uint
 from math import modf
-import sys
+import sys, os, site, sysconfig
 
-_rsth = cdll.LoadLibrary('librtpsynth.so')
+from .env import RSTH_MOD_NAME
+
+_esuf = sysconfig.get_config_var('EXT_SUFFIX')
+if not _esuf:
+    _esuf = '.so'
+try:
+    import pathlib
+    _ROOT = str(pathlib.Path(__file__).parent.absolute())
+except ImportError:
+    _ROOT = os.path.abspath(os.path.dirname(__file__))
+#print('ROOT: ' + str(_ROOT))
+modloc = site.getsitepackages()
+modloc.insert(0, os.path.join(_ROOT, ".."))
+for p in modloc:
+   try:
+       #print("Trying %s" % os.path.join(p, RSTH_MOD_NAME + _esuf))
+       _rsth = cdll.LoadLibrary(os.path.join(p, RSTH_MOD_NAME + _esuf))
+   except:
+       continue
+   break
+else:
+   _rsth = cdll.LoadLibrary('librtpsynth.so')
+
 _rsth.rsynth_ctor.argtypes = [c_int, c_int]
 _rsth.rsynth_ctor.restype = c_void_p
 _rsth.rsynth_dtor.argtypes = [c_void_p,]
