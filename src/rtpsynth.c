@@ -43,7 +43,7 @@ rsynth_next_pkt_pa(void *_rip, int plen, int pt, void *buf, unsigned int blen,
 {
     struct rsynth_inst *rip;
     struct rtp_hdr *rnp;
-    int rs, hl;
+    unsigned int rs, hl;
 
     rip = (struct rsynth_inst *)_rip;
     hl = RTP_HDR_LEN(&rip->model);
