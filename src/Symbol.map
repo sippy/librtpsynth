@@ -3,3 +3,7 @@ LIBRTPSYNTH_ddd0b90ff306 {
             rsynth_dtor;
     local: *;
 };
+
+LIBRTPSYNTH_72f7eab9e3e6 {
+    global: rsynth_set_mbt; rsynth_resync;
+};
