@@ -55,8 +55,12 @@ _rsth.rsynth_next_pkt.restype = c_void_p
 _rsth.rsynth_next_pkt.argtypes = [c_void_p, c_int, c_int]
 _rsth.rsynth_next_pkt_pa.restype = c_int
 _rsth.rsynth_next_pkt_pa.argtypes = [c_void_p, c_int, c_int, c_void_p, c_uint, c_int]
+_rsth.rsynth_set_mbt.argtypes = [c_void_p, c_uint]
+_rsth.rsynth_set_mbt.restype = c_uint
+_rsth.rsynth_resync.argtypes = [c_void_p, c_void_p]
 
 _rsth.rsynth_pkt_free.argtypes = [c_void_p,]
+
 
 class RtpSynth(object):
     _hndl = None
@@ -82,15 +86,29 @@ class RtpSynth(object):
     def pkt_free(self, pkt):
         self._rsth.rsynth_pkt_free(pkt)
 
+    def set_mbt(self, mbt):
+        return self._rsth.rsynth_set_mbt(self._hndl, mbt)
+
+    def resync(self):
+        self._rsth.rsynth_resync(self._hndl, None)
+
     def __del__(self):
         if bool(self._hndl):
             self._rsth.rsynth_dtor(self._hndl)
 
 if __name__ == '__main__':
+    from time import monotonic
     i = 0
     rs = RtpSynth(8000, 30)
-    while i < 100000:
+    stime = monotonic()
+    while monotonic() - stime < 5.0:
+        if i % 43 == 0:
+            rs.resync()
         rp = rs.next_pkt(170, 0)
         i += 1
-
+        if i % 4242 == 0:
+            res = rs.set_mbt(1)
+            assert res == 0
+            res = rs.set_mbt(0)
+            assert res == 1
     del rs

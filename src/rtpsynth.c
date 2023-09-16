@@ -25,20 +25,23 @@
 
 #include <arpa/inet.h>
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "rtp.h"
 #include "rtpsynth.h"
+#include "rsth_timeops.h"
 
 struct rsynth_inst {
     int srate;
     int ptime;
-    long long ts_l;
-    long long seq_l;
+    struct rsynth_seq l;
     int ts_inc;
     struct rtp_hdr model;
+    struct timespec last_ts;
 };
 
 void *
@@ -56,8 +59,9 @@ rsynth_ctor(int srate, int ptime)
     rip->model.version = 2;
     rip->model.mbt = 1;
     rip->model.ssrc = random();
-    rip->ts_l = random() & 0xfffffffe;
-    rip->seq_l = random() & 0xffff;
+    rip->l.ts = random() & 0xfffffffe;
+    rip->l.seq = random() & 0xffff;
+    (void)clock_gettime(CLOCK_MONOTONIC, &rip->last_ts);
     return ((void *)rip);
 }
 
@@ -84,11 +88,13 @@ rsynth_next_pkt_pa(void *_rip, int plen, int pt, void *buf, unsigned int blen,
 
     memcpy(rnp, &rip->model, sizeof(struct rtp_hdr));
     rnp->pt = pt;
-    rnp->seq = htons(rip->seq_l);
-    rnp->ts = htonl(rip->ts_l);
+    rnp->seq = htons(rip->l.seq);
+    rnp->ts = htonl(rip->l.ts);
     rip->model.mbt = 0;
-    rip->seq_l++;
-    rip->ts_l += rip->ts_inc;
+    rip->l.seq++;
+    rip->l.ts += rip->ts_inc;
+
+    (void)clock_gettime(CLOCK_MONOTONIC, &rip->last_ts);
 
     return (rs);
 }
@@ -108,6 +114,34 @@ rsynth_next_pkt(void *_rip, int plen, int pt)
     rsynth_next_pkt_pa(_rip, plen, pt, rnp, rs, 0);
 
     return (rnp);
+}
+
+unsigned int
+rsynth_set_mbt(void *_rip, unsigned int new_st)
+{
+    struct rsynth_inst *rip;
+    unsigned int old_st;
+
+    rip = (struct rsynth_inst *)_rip;
+    old_st = rip->model.mbt;
+    rip->model.mbt = new_st;
+    return (old_st);
+}
+
+void
+rsynth_resync(void *_rip, struct rsynth_seq *rsp)
+{
+    struct timespec curr_ts;
+    struct rsynth_inst *rip;
+    uint64_t eltime;
+
+    rip = (struct rsynth_inst *)_rip;
+    if (rsp != NULL) {
+        *rsp = rip->l;
+    }
+    (void)clock_gettime(CLOCK_MONOTONIC, &curr_ts);
+    timespecsub(&curr_ts, &rip->last_ts);
+    rip->l.ts += timespec2un64time(&curr_ts) * rip->srate / NSEC_IN_SEC;
 }
 
 void
