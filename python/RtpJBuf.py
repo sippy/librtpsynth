@@ -60,6 +60,17 @@ _rsth.rtpjbuf_dtor.argtypes = [c_void_p,]
 _rsth.rtpjbuf_frame_dtor.argtypes = [c_void_p,]
 _rsth.rtpjbuf_udp_in.argtypes = [c_void_p, c_void_p, c_size_t]
 _rsth.rtpjbuf_udp_in.restype = RJBUdpInR
+_rsth.rtpjbuf_flush.argtypes = [c_void_p]
+_rsth.rtpjbuf_flush.restype = RJBUdpInR
+
+class ERSFrame():
+     lseq_start: int
+     lseq_end: int
+     type = RTPFrameType.ERS
+
+     def __init__(self, content):
+         self.lseq_start = content.frame.ers.lseq_start
+         self.lseq_end = content.frame.ers.lseq_end
 
 class FrameWrapper():
     _rsth = None
@@ -68,17 +79,21 @@ class FrameWrapper():
 
     def __init__(self, _rsth, content, data):
         self._rsth = _rsth
-        self.content = content
+        if content.type == RTPFrameType.ERS:
+            self.content = ERSFrame(content)
+        else:
+            self.content = content
         self.data = data
 
     def __del__(self):
-        self._rsth.rtpjbuf_frame_dtor(addressof(self.content))
+        if self.content.type == RTPFrameType.RTP:
+            self._rsth.rtpjbuf_frame_dtor(addressof(self.content))
 
     def __str__(self):
         if self.content.type == RTPFrameType.RTP:
             return f'RTP_Frame(seq={self.content.frame.rtp.lseq})'
-        return f'RTP_Erasure(seq_range={self.content.frame.ers.lseq_start} ' + \
-          f'-- {self.content.frame.ers.lseq_end})'
+        return f'RTP_Erasure(seq_range={self.content.lseq_start} ' + \
+          f'-- {self.content.lseq_end})'
 
     def __repr__(self):
         return self.__str__()
@@ -99,9 +114,13 @@ class RtpJBuf(object):
         buffer = create_string_buffer(data)
         size = len(data)
         rval = self._rsth.rtpjbuf_udp_in(self._hndl, buffer, size)
+        return self._proc_RJBUdpInR(rval, (buffer, data))
+
+    def _proc_RJBUdpInR(self, rval, bdata = None):
         if rval.error != 0:
             raise RuntimeError(f'rtpjbuf_udp_in(): error {rval.error}')
-        self._ref_cache[addressof(buffer)] = (buffer, data)
+        if bdata is not None:
+            self._ref_cache[addressof(bdata[0])] = bdata
         ready = []
         for i, bucket in enumerate((rval.ready, rval.drop)):
             while bool(bucket):
@@ -118,6 +137,12 @@ class RtpJBuf(object):
                 #print(current.frame.rtp.data, addressof(buffer))
                 bucket = current.next
         return ready
+
+    def flush(self):
+        rval = self._rsth.rtpjbuf_flush(self._hndl)
+        rval = self._proc_RJBUdpInR(rval)
+        assert len(self._ref_cache.keys()) == 0
+        return rval
 
     def __del__(self):
         if bool(self._hndl):
