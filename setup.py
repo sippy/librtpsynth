@@ -9,9 +9,17 @@ from python.env import RSTH_MOD_NAME
 
 rs_srcs = ['src/rtpsynth.c', 'src/rtp.c', 'src/rtpjbuf.c']
 
+extra_compile_args = ['--std=c11', '-Wno-zero-length-array', '-Wall', '-pedantic', '-flto']
+extra_link_args = ['-Wl,--version-script=src/Symbol.map', '-flto']
+if False:
+    extra_compile_args.extend(('-g3', '-O0'))
+else:
+    extra_compile_args.extend(('-march=native', '-O3'))
+    extra_link_args.extend(('-march=native', '-O3'))
+
 module1 = Extension(RSTH_MOD_NAME, sources = rs_srcs, \
-    extra_link_args = ['-Wl,--version-script=src/Symbol.map', '-flto'], \
-    extra_compile_args = ['-g3', '-O0', '-flto'])
+    extra_link_args = extra_link_args, \
+    extra_compile_args = extra_compile_args)
 
 def get_ex_mod():
     if 'NO_PY_EXT' in os.environ:
