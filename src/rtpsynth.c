@@ -66,7 +66,7 @@ rsynth_ctor(int srate, int ptime)
 }
 
 int
-rsynth_next_pkt_pa(void *_rip, int plen, int pt, void *buf, unsigned int blen,
+rsynth_next_pkt_pa(void *_rip, int plen, int pt, char *buf, unsigned int blen,
   int filled)
 {
     struct rsynth_inst *rip;
@@ -111,7 +111,7 @@ rsynth_next_pkt(void *_rip, int plen, int pt)
     rnp = malloc(rs);
     if (rnp == NULL)
         return (NULL);
-    rsynth_next_pkt_pa(_rip, plen, pt, rnp, rs, 0);
+    rsynth_next_pkt_pa(_rip, plen, pt, (char *)rnp, rs, 0);
 
     return (rnp);
 }
@@ -133,7 +133,6 @@ rsynth_resync(void *_rip, struct rsynth_seq *rsp)
 {
     struct timespec curr_ts;
     struct rsynth_inst *rip;
-    uint64_t eltime;
 
     rip = (struct rsynth_inst *)_rip;
     if (rsp != NULL) {
