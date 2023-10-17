@@ -88,6 +88,7 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
     int perror = rtp_packet_parse_raw(data, size, &fp->rtp.info);
     if (perror != RTP_PARSER_OK) {
         free(fp);
+        rjbp->jbs.drop.perror += 1;
         ruir.error = perror;
         return (ruir);
     }
@@ -121,10 +122,11 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
     }
     if (rjbp->jb.head == NULL) {
         assert(rjbp->jb.size == 0);
+        assert(rjbp->last_max_lseq < fp->rtp.lseq);
+        rjbp->last_max_lseq = fp->rtp.lseq;
         if (rjbp->last_lseq == fp->rtp.lseq - 1) {
-            assert(rjbp->last_max_lseq < fp->rtp.lseq);
             assert(rjbp->last_lseq < fp->rtp.lseq);
-            rjbp->last_max_lseq = rjbp->last_lseq = fp->rtp.lseq;
+            rjbp->last_lseq = fp->rtp.lseq;
             ruir.ready = fp;
         } else {
             rjbp->jb.head = fp;
