@@ -7,10 +7,11 @@ from distutils.core import Extension
 
 from python.env import RSTH_MOD_NAME
 
-rs_srcs = ['src/rtpsynth.c']
+rs_srcs = ['src/rtpsynth.c', 'src/rtp.c', 'src/rtpjbuf.c']
 
 module1 = Extension(RSTH_MOD_NAME, sources = rs_srcs, \
-    extra_link_args = ['-Wl,--version-script=src/Symbol.map',])
+    extra_link_args = ['-Wl,--version-script=src/Symbol.map', '-flto'], \
+    extra_compile_args = ['-g3', '-O0', '-flto'])
 
 def get_ex_mod():
     if 'NO_PY_EXT' in os.environ:

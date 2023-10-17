@@ -7,3 +7,7 @@ LIBRTPSYNTH_ddd0b90ff306 {
 LIBRTPSYNTH_72f7eab9e3e6 {
     global: rsynth_set_mbt; rsynth_resync;
 };
+
+LIBRTPSYNTH_000000000000 {
+    global: rtpjbuf_ctor; rtpjbuf_dtor; rtpjbuf_udp_in; rtpjbuf_frame_dtor;
+} LIBRTPSYNTH_72f7eab9e3e6;
