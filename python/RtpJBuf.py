@@ -28,8 +28,7 @@ class ERSFrame(Structure):
         ("lseq_end", c_uint64)
     ]
 
-class RTPFrameType(c_int):
-    # replace with actual enum values
+class RTPFrameType():
     RTP = 0
     ERS = 1
 
@@ -43,7 +42,7 @@ class RTPFrame(Structure):
     pass
 
 RTPFrame._fields_ = [
-        ("type", RTPFrameType),
+        ("type", c_int),
         ("frame", RTPFrameUnion),
         ("next", POINTER(RTPFrame))
     ]
@@ -64,15 +63,25 @@ _rsth.rtpjbuf_udp_in.restype = RJBUdpInR
 
 class FrameWrapper():
     _rsth = None
-    frame = None
+    content = None
     data = None
 
-    def __init__(self, _rsth, frame, data):
+    def __init__(self, _rsth, content, data):
         self._rsth = _rsth
-        self.frame = frame
+        self.content = content
+        self.data = data
 
     def __del__(self):
-        self._rsth.rtpjbuf_frame_dtor(addressof(self.frame))
+        self._rsth.rtpjbuf_frame_dtor(addressof(self.content))
+
+    def __str__(self):
+        if self.content.type == RTPFrameType.RTP:
+            return f'RTP_Frame(seq={self.content.frame.rtp.lseq})'
+        return f'RTP_Erasure(seq_range={self.content.frame.ers.lseq_start} ' + \
+          f'-- {self.content.frame.ers.lseq_end})'
+
+    def __repr__(self):
+        return self.__str__()
 
 class RtpJBuf(object):
     _hndl = None
@@ -97,7 +106,10 @@ class RtpJBuf(object):
         for i, bucket in enumerate((rval.ready, rval.drop)):
             while bool(bucket):
                 current = bucket.contents
-                buffer, data = self._ref_cache.pop(current.frame.rtp.data)
+                if current.type == RTPFrameType.RTP:
+                    buffer, data = self._ref_cache.pop(current.frame.rtp.data)
+                else:
+                    data = None
                 if i == 0:
                     ready.append(FrameWrapper(self._rsth, current, data))
                 else:
