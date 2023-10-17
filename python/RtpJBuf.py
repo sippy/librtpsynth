@@ -113,6 +113,7 @@ class RtpJBuf(object):
                 if i == 0:
                     ready.append(FrameWrapper(self._rsth, current, data))
                 else:
+                    assert current.type == RTPFrameType.RTP
                     self._rsth.rtpjbuf_frame_dtor(addressof(current))
                 #print(current.frame.rtp.data, addressof(buffer))
                 bucket = current.next
