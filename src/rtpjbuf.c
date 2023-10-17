@@ -28,9 +28,11 @@ struct rtpjbuf_stats {
 
 struct rtpjbuf_inst {
     uint64_t last_lseq;
+    uint64_t last_max_lseq;
     uint64_t lseq_mask;
     struct jitter_buffer jb;
     struct rtpjbuf_stats jbs;
+    struct rtp_frame ers_frame;
 };
 
 void *
@@ -44,6 +46,7 @@ rtpjbuf_ctor(unsigned int capacity)
     memset(rjbp, '\0', sizeof(struct rtpjbuf_inst));
     rjbp->jb.capacity = capacity;
     rjbp->last_lseq = LRS_DEFAULT;
+    rjbp->ers_frame.type = RFT_ERS;
     return ((void *)rjbp);
 }
 
@@ -88,27 +91,40 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
         ruir.error = perror;
         return (ruir);
     }
-    fp->type = RFT_PKT;
+    fp->type = RFT_RTP;
     fp->rtp.data = data;
+
     /* Check for SEQ wrap-out and convert SEQ to the logical SEQ */
     fp->rtp.lseq = rjbp->lseq_mask | fp->rtp.info.seq;
-    if (rjbp->last_lseq != LRS_DEFAULT && fp->rtp.lseq <= rjbp->last_lseq) {
-        int ldist = rjbp->last_lseq - fp->rtp.lseq;
-        if (ldist < 65000) {
-            if (ldist == 0)
-                goto gotdup;
-            rjbp->jbs.drop.late += 1;
-            ruir.drop = fp;
-            return (ruir);
-        }
+
+    if (rjbp->last_lseq == LRS_DEFAULT) {
+        rjbp->last_max_lseq = rjbp->last_lseq = fp->rtp.lseq;
+        ruir.ready = fp;
+        return (ruir);
+    }
+
+    if (rjbp->last_max_lseq % 65536 < 536  && fp->rtp.info.seq > 65000) {
+        /* Pre-wrap packet received after a wrap */
+        fp->rtp.lseq -= 0x10000;
+    } else if (rjbp->last_max_lseq > 65000 && fp->rtp.lseq < rjbp->last_max_lseq - 65000) {
         rjbp->lseq_mask += 0x10000;
         fp->rtp.lseq += 0x10000;
         rjbp->jbs.seq_wup += 1;
     }
+    if (fp->rtp.lseq <= rjbp->last_lseq) {
+        int ldist = rjbp->last_lseq - fp->rtp.lseq;
+        if (ldist == 0)
+            goto gotdup;
+        rjbp->jbs.drop.late += 1;
+        ruir.drop = fp;
+        return (ruir);
+    }
     if (rjbp->jb.head == NULL) {
         assert(rjbp->jb.size == 0);
-        if (rjbp->last_lseq == LRS_DEFAULT || rjbp->last_lseq == fp->rtp.lseq - 1) {
-            rjbp->last_lseq = fp->rtp.lseq;
+        if (rjbp->last_lseq == fp->rtp.lseq - 1) {
+            assert(rjbp->last_max_lseq < fp->rtp.lseq);
+            assert(rjbp->last_lseq < fp->rtp.lseq);
+            rjbp->last_max_lseq = rjbp->last_lseq = fp->rtp.lseq;
             ruir.ready = fp;
         } else {
             rjbp->jb.head = fp;
@@ -137,6 +153,8 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
         }
     } else {
         ifp_pre->next = fp;
+        assert (rjbp->last_max_lseq < fp->rtp.lseq);
+        rjbp->last_max_lseq = fp->rtp.lseq;
     }
     rjbp->jb.size += 1;
     if (rjbp->jb.size == rjbp->jb.capacity) {
@@ -148,6 +166,13 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
             rjbp->jb.size -= 1;
         }
         rjbp->jb.head = ifp->next;
+        assert(rjbp->last_lseq < fp->rtp.lseq);
+        if (rjbp->last_lseq + 1 != fp->rtp.lseq) {
+            rjbp->ers_frame.next = fp;
+            rjbp->ers_frame.ers.lseq_start = rjbp->last_lseq + 1;
+            rjbp->ers_frame.ers.lseq_end = fp->rtp.lseq - 1;
+            fp = &rjbp->ers_frame;
+        }
         rjbp->last_lseq = ifp->rtp.lseq;
         ifp->next = NULL;
         ruir.ready = fp;
