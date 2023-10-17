@@ -25,30 +25,37 @@ from rtpsynth.RtpSynth import RtpSynth
 from rtpsynth.RtpJBuf import RtpJBuf, RTPFrameType
 
 from random import shuffle, seed, random
+from time import monotonic
 
 seed(42)
 
 class TestCase():
+    iterations: int
     jbsize: int
     ers_cnt: int
     rtp_cnt: int
 
-    def __init__(self, jbsize, ers_cnt, rtp_cnt):
+    def __init__(self, iterations, jbsize, ers_cnt, rtp_cnt):
+        self.iterations = iterations
         self.jbsize = jbsize
         self.ers_cnt = ers_cnt
         self.rtp_cnt = rtp_cnt
 
-known_cnts = {
-    1000000: TestCase(20, 32392, 967608)
-}
+known_cnts = [
+    TestCase(1000000, 20, 32392, 967608),
+    TestCase(1000000, 10, 185812, 814188),
+]
 
-def run_test(iteration, test_case, verbose = False):
+def run_test(test_case, verbose = False):
+    iterations = test_case.iterations
     i = 0
     rs = RtpSynth(8000, 30)
     rb = RtpJBuf(test_case.jbsize)
     robuf = []
     iterations = 1000000
     ers_cnt = rtp_cnt = 0
+    test_data = []
+    print('Generating test data...')
     while i < iterations:
         rp = rs.next_pkt(170, 0)
         robuf.append(rp)
@@ -57,34 +64,33 @@ def run_test(iteration, test_case, verbose = False):
             #print(len(robuf))
             robuf.extend(robuf[:int(len(robuf)/10)])
             shuffle(robuf)
-            res = []
-            for _rp in robuf:
-                res.append(rb.udp_in(_rp))
-            if i == iterations - 1:
-                fres = rb.flush()
-                #print(f'len(fres) = {len(fres)}')
-                res.append(fres)
-            for _r in res:
-                if len(_r) > 0:
-                    ers_cnt_add = sum([x.content.lseq_end - x.content.lseq_start + 1 for x in _r if x.content.type == RTPFrameType.ERS])
-                    rtp_cnt += sum([1 for x in _r if x.content.type == RTPFrameType.RTP])
-                    if verbose:
-                        print(_r)
-                    assert ers_cnt_add < 200
-                    ers_cnt += ers_cnt_add
+            test_data.extend(robuf)
             robuf = []
-        #if i % 19 != 0:
-        #    res = rb.udp_in(rp)
-        #    if len(res) > 0:
-        #        print(res)
         i += 1
+    print('Testing...')
+    btime = monotonic()
+    for i, pkt in enumerate(test_data):
+        res = rb.udp_in(pkt)
+        if i == len(test_data) - 1:
+            fres = rb.flush()
+            #print(f'len(fres) = {len(fres)}')
+            res.extend(fres)
+        if len(res) == 0:
+            continue
+        ers_cnt_add = sum([x.content.lseq_end - x.content.lseq_start + 1 for x in res if x.content.type == RTPFrameType.ERS])
+        rtp_cnt += sum([1 for x in res if x.content.type == RTPFrameType.RTP])
+        if verbose:
+            print(res)
+        assert ers_cnt_add < 200
+        ers_cnt += ers_cnt_add
+    etime = monotonic()
 
     del rs
     print(f'ers_cnt: {ers_cnt}')
     print(f'rtp_cnt: {rtp_cnt}')
-    print(f'---\nTotal: {rtp_cnt + ers_cnt}')
+    print(f'---\nTotal: {rtp_cnt + ers_cnt}, time={etime - btime}')
     assert test_case.ers_cnt == ers_cnt and test_case.rtp_cnt == rtp_cnt
 
 if __name__ == '__main__':
-    iterations, test_case = list(known_cnts.items())[0]
-    run_test(iterations, test_case)
+    for test_case in known_cnts:
+        run_test(test_case)
