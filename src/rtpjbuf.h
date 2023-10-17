@@ -1,6 +1,6 @@
 #pragma once
 
-enum rtp_frame_type { RFT_PKT, RTP_ERS };
+enum rtp_frame_type { RFT_RTP = 0, RFT_ERS = 1};
 
 struct rtp_packet {
     struct rtp_info info;
