@@ -1,0 +1,225 @@
+/*
+ * Copyright (c) 2007-2023 Sippy Software, Inc., http://www.sippysoft.com
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ */
+
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <assert.h>
+#include <stddef.h>
+
+#include "rtp.h"
+#include "rtp_info.h"
+
+#define RTP_PROFILE_AUDIO(s, nc) {.ts_rate = (s), .sample_rate = (s), \
+  .pt_kind = RTP_PTK_AUDIO, .nchannels = (nc)}
+
+const struct rtp_profile rtp_profiles[128] = {
+    RTP_PROFILE_AUDIO(8000,  1), /* RTP_PCMU */
+    {.pt_kind = RTP_PTK_RES},    /* Reserved */
+    {.pt_kind = RTP_PTK_RES},    /* Reserved */
+    RTP_PROFILE_AUDIO(8000,  1), /* RTP_GSM */
+    RTP_PROFILE_AUDIO(8000,  1), /* RTP_G723 */
+    RTP_PROFILE_AUDIO(8000,  1), /* RTP_DVI4_8000 */
+    RTP_PROFILE_AUDIO(16000, 1), /* RTP_DVI4_16000 */
+    RTP_PROFILE_AUDIO(8000,  1), /* RTP_LPC */
+    RTP_PROFILE_AUDIO(8000,  1), /* RTP_PCMA */
+    RTP_PROFILE_AUDIO(8000,  1), /* RTP_G722 */
+    RTP_PROFILE_AUDIO(44100, 1), /* RTP_L16_MONO */
+    RTP_PROFILE_AUDIO(44100, 2), /* RTP_L16_STEREO */
+    RTP_PROFILE_AUDIO(8000,  1), /* RTP_QCELP */
+    RTP_PROFILE_AUDIO(8000,  1), /* RTP_CN */
+    RTP_PROFILE_AUDIO(90000, 2), /* RTP_MPA */
+    RTP_PROFILE_AUDIO(8000,  1), /* RTP_G728 */
+    RTP_PROFILE_AUDIO(11025, 1), /* RTP_DVI4_11025 */
+    RTP_PROFILE_AUDIO(22050, 1), /* RTP_DVI4_22050 */
+    RTP_PROFILE_AUDIO(8000,  1)  /* RTP_G729 */
+};
+
+const char *
+rtp_packet_parse_errstr(rtp_parser_err_t ecode)
+{
+    switch (ecode) {
+    case RTP_PARSER_OK:
+       return "no error";
+
+    case RTP_PARSER_PTOOSHRT:
+       return "packet is too short for RTP header";
+
+    case RTP_PARSER_IHDRVER:
+       return "incorrect RTP header version";
+
+    case RTP_PARSER_PTOOSHRTXS:
+       return "packet is too short for extended RTP header size";
+
+    case RTP_PARSER_PTOOSHRTXH:
+       return "packet is too short for extended RTP header";
+
+    case RTP_PARSER_PTOOSHRTPS:
+       return "packet is too short for RTP padding size";
+
+    case RTP_PARSER_PTOOSHRTP:
+       return "packet is too short for RTP padding";
+
+    case RTP_PARSER_IPS:
+       return "invalid RTP padding size";
+
+    default:
+       abort();
+    }
+
+    /* NOTREACHED */
+    return NULL;
+}
+
+static int
+g723_len(unsigned char ch)
+{
+
+    switch (ch & 3) {
+    case 2:
+        /* Silence Insertion Descriptor (SID) frame */
+        return 4;
+
+    case 0:
+        /* 6.3 kbit/s frame */
+        return 24;
+
+    case 1:
+        /* 5.3 kbit/s frame */
+        return 20;
+
+    default:
+        return RTP_NSAMPLES_UNKNOWN;
+    }
+}
+
+static int
+g723_samples(const unsigned char *buf, int maxlen)
+{
+    int pos, samples, n;
+
+    for (pos = 0, samples = 0; pos < maxlen; pos += n) {
+        samples += 240;
+        n = g723_len(buf[pos]);
+        if (n == RTP_NSAMPLES_UNKNOWN)
+            return RTP_NSAMPLES_UNKNOWN;
+    }
+    return samples;
+}
+
+static int
+rtp_calc_samples(int codec_id, size_t nbytes, const unsigned char *data)
+{
+
+    switch (codec_id) {
+        case RTP_PCMU:
+        case RTP_PCMA:
+            return nbytes;
+
+        case RTP_G729:
+            return (nbytes / 10) * 80 + (nbytes % 10 == 0 ? 0 : 80);
+
+        case RTP_GSM:
+            return 160 * (nbytes / 33);
+
+        case RTP_G723:
+            return g723_samples(data, nbytes);
+
+        case RTP_G722:
+            return nbytes;
+
+        default:
+            return RTP_NSAMPLES_UNKNOWN;
+    }
+}
+
+rtp_parser_err_t
+rtp_packet_parse_raw(const unsigned char *buf, size_t size, struct rtp_info *rinfo)
+{
+    int padding_size;
+    rtp_hdr_ext_t *hdr_ext_ptr;
+    rtp_hdr_t *header;
+
+    header = (rtp_hdr_t *)buf;
+
+    padding_size = 0;
+
+    rinfo->data_size = 0;
+    rinfo->data_offset = 0;
+    rinfo->appendable = 1;
+    rinfo->nsamples = RTP_NSAMPLES_UNKNOWN;
+
+    if (size < sizeof(*header))
+        return RTP_PARSER_PTOOSHRT;
+
+    if (header->version != 2)
+        return RTP_PARSER_IHDRVER;
+
+    rinfo->data_offset = RTP_HDR_LEN(header);
+
+    if (header->x != 0) {
+        if (size < rinfo->data_offset + sizeof(*hdr_ext_ptr))
+            return RTP_PARSER_PTOOSHRTXS;
+        hdr_ext_ptr = (rtp_hdr_ext_t *)&buf[rinfo->data_offset];
+        rinfo->data_offset += sizeof(rtp_hdr_ext_t) +
+          (ntohs(hdr_ext_ptr->length) * sizeof(hdr_ext_ptr->extension[0]));
+    }
+
+    if (size < rinfo->data_offset)
+        return RTP_PARSER_PTOOSHRTXH;
+
+    if (header->p != 0) {
+        if (rinfo->data_offset == size)
+            return RTP_PARSER_PTOOSHRTPS;
+        padding_size = buf[size - 1];
+        if (padding_size == 0)
+            return RTP_PARSER_IPS;
+    }
+
+    if (size < rinfo->data_offset + padding_size)
+        return RTP_PARSER_PTOOSHRTP;
+
+    rinfo->data_size = size - rinfo->data_offset - padding_size;
+    rinfo->ts = ntohl(header->ts);
+    rinfo->seq = ntohs(header->seq);
+    rinfo->ssrc = ntohl(header->ssrc);
+    rinfo->rtp_profile = &rtp_profiles[header->pt];
+
+    if (rinfo->data_size == 0)
+        return RTP_PARSER_OK;
+
+    rinfo->nsamples = rtp_calc_samples(header->pt, rinfo->data_size,
+      &buf[rinfo->data_offset]);
+    /* 
+     * G.729 comfort noise frame as the last frame causes 
+     * packet to be non-appendable
+     */
+    if (header->pt == RTP_G729 && (rinfo->data_size % 10) != 0)
+        rinfo->appendable = 0;
+    return RTP_PARSER_OK;
+}

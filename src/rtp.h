@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2004-2006 Maxim Sobolev <sobomax@FreeBSD.org>
- * Copyright (c) 2006-2007 Sippy Software, Inc., http://www.sippysoft.com
+ * Copyright (c) 2006-2023 Sippy Software, Inc., http://www.sippysoft.com
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,8 +26,7 @@
  *
  */
 
-#ifndef _RTP_H_
-#define _RTP_H_
+#pragma once
 
 /*
  * RTP payload types
@@ -120,4 +119,18 @@ struct rtp_packet;
 
 #define ts_less(ts1, ts2) (((ts1) - (ts2)) > (uint32_t) (1 << 31))
 
-#endif
+typedef enum {
+    RTP_PARSER_NOTPARSED = 0,
+    RTP_PARSER_OK = 1,
+    RTP_PARSER_PTOOSHRT = -1,
+    RTP_PARSER_IHDRVER = -2,
+    RTP_PARSER_PTOOSHRTXS = -3,
+    RTP_PARSER_PTOOSHRTXH = -4,
+    RTP_PARSER_PTOOSHRTPS = -5,
+    RTP_PARSER_PTOOSHRTP = -6,
+    RTP_PARSER_IPS = -7,
+} rtp_parser_err_t;
+
+struct rtp_info;
+
+rtp_parser_err_t rtp_packet_parse_raw(const unsigned char *, size_t, struct rtp_info *);
