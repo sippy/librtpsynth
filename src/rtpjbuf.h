@@ -34,3 +34,4 @@ void *rtpjbuf_ctor(unsigned int capacity);
 void rtpjbuf_dtor(void *_rjbp);
 void rtpjbuf_frame_dtor(void *_rfp);
 struct rjb_udp_in_r rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size);
+struct rjb_udp_in_r rtpjbuf_flush(void *_rjbp);

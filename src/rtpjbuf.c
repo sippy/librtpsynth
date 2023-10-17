@@ -1,6 +1,5 @@
 #include <arpa/inet.h>
 
-#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +9,10 @@
 #include "rtpjbuf.h"
 
 #define LRS_DEFAULT ((uint64_t)-1)
+#define LMS_DEFAULT LRS_DEFAULT
+
+#define BOOLVAL(x)  (x)
+#define x_unlikely(x) (__builtin_expect((x), 0), (x))
 
 struct jitter_buffer {
     struct rtp_frame *head;
@@ -35,6 +38,13 @@ struct rtpjbuf_inst {
     struct rtp_frame ers_frame;
 };
 
+static void
+d_assert(int invar)
+{
+    if x_unlikely(!invar)
+        abort();
+}
+
 void *
 rtpjbuf_ctor(unsigned int capacity)
 {
@@ -46,6 +56,7 @@ rtpjbuf_ctor(unsigned int capacity)
     memset(rjbp, '\0', sizeof(struct rtpjbuf_inst));
     rjbp->jb.capacity = capacity;
     rjbp->last_lseq = LRS_DEFAULT;
+    rjbp->last_max_lseq = LMS_DEFAULT;
     rjbp->ers_frame.type = RFT_ERS;
     return ((void *)rjbp);
 }
@@ -71,6 +82,17 @@ rtpjbuf_dtor(void *_rjbp)
     free(rjbp);
 }
 
+static struct rtp_frame *
+insert_ers_frame(struct rtpjbuf_inst *rjbp, struct rtp_frame *fp)
+{
+    if (rjbp->last_lseq + 1 == fp->rtp.lseq)
+        return (fp);
+    rjbp->ers_frame.next = fp;
+    rjbp->ers_frame.ers.lseq_start = rjbp->last_lseq + 1;
+    rjbp->ers_frame.ers.lseq_end = fp->rtp.lseq - 1;
+    return (&rjbp->ers_frame);
+}
+
 struct rjb_udp_in_r
 rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
 {
@@ -80,13 +102,13 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
 
     rjbp = (struct rtpjbuf_inst *)_rjbp;
     fp = malloc(sizeof(struct rtp_frame));
-    if (fp == NULL) {
+    if x_unlikely(fp == NULL) {
         ruir.error = RJB_ENOMEM;
         return (ruir);
     }
     memset(fp, '\0', sizeof(struct rtp_frame));
     int perror = rtp_packet_parse_raw(data, size, &fp->rtp.info);
-    if (perror != RTP_PARSER_OK) {
+    if x_unlikely(perror != RTP_PARSER_OK) {
         free(fp);
         rjbp->jbs.drop.perror += 1;
         ruir.error = perror;
@@ -98,21 +120,26 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
     /* Check for SEQ wrap-out and convert SEQ to the logical SEQ */
     fp->rtp.lseq = rjbp->lseq_mask | fp->rtp.info.seq;
 
-    if (rjbp->last_lseq == LRS_DEFAULT) {
-        rjbp->last_max_lseq = rjbp->last_lseq = fp->rtp.lseq;
-        ruir.ready = fp;
-        return (ruir);
+    int warm_up = BOOLVAL(rjbp->last_lseq == LRS_DEFAULT);
+    x_unlikely(warm_up);
+    int lms_warm_up = BOOLVAL(rjbp->last_max_lseq == LMS_DEFAULT);
+    x_unlikely(lms_warm_up);
+    if (lms_warm_up) {
+        d_assert(rjbp->jb.head == NULL);
+        goto lms_init;
     }
 
-    if (rjbp->last_max_lseq % 65536 < 536  && fp->rtp.info.seq > 65000) {
+    d_assert(rjbp->jb.head == NULL || warm_up || rjbp->jb.head->rtp.lseq - 1 > rjbp->last_lseq);
+
+    if x_unlikely(rjbp->last_max_lseq % 65536 < 536  && fp->rtp.info.seq > 65000) {
         /* Pre-wrap packet received after a wrap */
         fp->rtp.lseq -= 0x10000;
-    } else if (rjbp->last_max_lseq > 65000 && fp->rtp.lseq < rjbp->last_max_lseq - 65000) {
+    } else if x_unlikely(rjbp->last_max_lseq > 65000 && fp->rtp.lseq < rjbp->last_max_lseq - 65000) {
         rjbp->lseq_mask += 0x10000;
         fp->rtp.lseq += 0x10000;
         rjbp->jbs.seq_wup += 1;
     }
-    if (fp->rtp.lseq <= rjbp->last_lseq) {
+    if x_unlikely(!warm_up && fp->rtp.lseq <= rjbp->last_lseq) {
         int ldist = rjbp->last_lseq - fp->rtp.lseq;
         if (ldist == 0)
             goto gotdup;
@@ -121,11 +148,12 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
         return (ruir);
     }
     if (rjbp->jb.head == NULL) {
-        assert(rjbp->jb.size == 0);
-        assert(rjbp->last_max_lseq < fp->rtp.lseq);
+        d_assert(rjbp->jb.size == 0);
+        d_assert(rjbp->last_max_lseq < fp->rtp.lseq);
+lms_init:
         rjbp->last_max_lseq = fp->rtp.lseq;
-        if (rjbp->last_lseq == fp->rtp.lseq - 1) {
-            assert(rjbp->last_lseq < fp->rtp.lseq);
+        if (!warm_up && rjbp->last_lseq == fp->rtp.lseq - 1) {
+            d_assert(rjbp->last_lseq < fp->rtp.lseq);
             rjbp->last_lseq = fp->rtp.lseq;
             ruir.ready = fp;
         } else {
@@ -147,7 +175,7 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
     if (ifp != NULL) {
         fp->next = ifp;
         if (ifp_pre == NULL) {
-            assert(ifp == rjbp->jb.head);
+            d_assert(ifp == rjbp->jb.head);
             fp->next = ifp;
             rjbp->jb.head = fp;
         } else {
@@ -155,11 +183,12 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
         }
     } else {
         ifp_pre->next = fp;
-        assert (rjbp->last_max_lseq < fp->rtp.lseq);
+        d_assert (rjbp->last_max_lseq < fp->rtp.lseq);
         rjbp->last_max_lseq = fp->rtp.lseq;
     }
     rjbp->jb.size += 1;
-    if (rjbp->jb.size == rjbp->jb.capacity) {
+    int flush = BOOLVAL(!warm_up && rjbp->jb.head->rtp.lseq == rjbp->last_lseq + 1);
+    if (rjbp->jb.size == rjbp->jb.capacity || flush) {
         fp = rjbp->jb.head;
         rjbp->jb.size -= 1;
         for (ifp = fp; ifp->next != NULL; ifp = ifp->next) {
@@ -168,24 +197,52 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
             rjbp->jb.size -= 1;
         }
         rjbp->jb.head = ifp->next;
-        assert(rjbp->last_lseq < fp->rtp.lseq);
-        if (rjbp->last_lseq + 1 != fp->rtp.lseq) {
-            rjbp->ers_frame.next = fp;
-            rjbp->ers_frame.ers.lseq_start = rjbp->last_lseq + 1;
-            rjbp->ers_frame.ers.lseq_end = fp->rtp.lseq - 1;
-            fp = &rjbp->ers_frame;
-        }
+        d_assert(warm_up || rjbp->last_lseq < fp->rtp.lseq);
+        d_assert(!warm_up || rjbp->last_lseq == LMS_DEFAULT);
+        if (!warm_up)
+            fp = insert_ers_frame(rjbp, fp);
         rjbp->last_lseq = ifp->rtp.lseq;
         ifp->next = NULL;
         ruir.ready = fp;
         if (rjbp->jb.head == NULL)
-            assert(rjbp->jb.size == 0);
+            d_assert(rjbp->jb.size == 0);
         else
-            assert(rjbp->jb.size > 0);
+            d_assert(rjbp->jb.size > 0);
     }
     return (ruir);
 gotdup:
     rjbp->jbs.drop.dup += 1;
     ruir.drop = fp;
+    return (ruir);
+}
+
+struct rjb_udp_in_r
+rtpjbuf_flush(void *_rjbp)
+{
+    struct rtpjbuf_inst *rjbp;
+    struct rtp_frame *fp, *ifp;
+    struct rjb_udp_in_r ruir = { 0 };
+    rjbp = (struct rtpjbuf_inst *)_rjbp;
+
+    if (rjbp->jb.head == NULL)
+        return (ruir);
+    d_assert(rjbp->jb.head->rtp.lseq - 1 > rjbp->last_lseq);
+    fp = rjbp->jb.head;
+    for (ifp = fp; ifp->next != NULL; ifp = ifp->next) {
+resume:
+        if (ifp->rtp.lseq + 1 != ifp->next->rtp.lseq) {
+            struct rtp_frame *tfp = ifp->next;
+            ifp->next = ruir.drop;
+            ruir.drop = fp;
+            ifp = fp = tfp;
+            if (fp->next == NULL)
+                break;
+            goto resume;
+        }
+    }
+    ruir.ready = insert_ers_frame(rjbp, fp);
+    rjbp->last_lseq = ifp->rtp.lseq;
+    rjbp->jb.head = NULL;
+    rjbp->jb.size = 0;
     return (ruir);
 }

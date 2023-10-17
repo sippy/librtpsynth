@@ -10,4 +10,5 @@ LIBRTPSYNTH_72f7eab9e3e6 {
 
 LIBRTPSYNTH_000000000000 {
     global: rtpjbuf_ctor; rtpjbuf_dtor; rtpjbuf_udp_in; rtpjbuf_frame_dtor;
+            rtpjbuf_flush;
 } LIBRTPSYNTH_72f7eab9e3e6;
