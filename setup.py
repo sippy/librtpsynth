@@ -6,11 +6,12 @@ from distutils.core import setup
 from distutils.core import Extension
 
 from python.env import RSTH_MOD_NAME
+from setup.RunCTest import RunCTest
 
 rs_srcs = ['src/rtpsynth.c', 'src/rtp.c', 'src/rtpjbuf.c']
 
 extra_compile_args = ['--std=c11', '-Wno-zero-length-array', '-Wall', '-pedantic', '-flto']
-extra_link_args = ['-Wl,--version-script=src/Symbol.map', '-flto']
+extra_link_args = ['-flto']
 if False:
     extra_compile_args.extend(('-g3', '-O0'))
 else:
@@ -20,6 +21,11 @@ else:
 module1 = Extension(RSTH_MOD_NAME, sources = rs_srcs, \
     extra_link_args = extra_link_args, \
     extra_compile_args = extra_compile_args)
+
+RunCTest.extra_link_args = extra_link_args.copy()
+RunCTest.extra_compile_args = extra_compile_args
+
+extra_link_args.append('-Wl,--version-script=src/Symbol.map')
 
 def get_ex_mod():
     if 'NO_PY_EXT' in os.environ:
@@ -40,6 +46,7 @@ kwargs = {'name':'RtpSynth',
       'packages':['rtpsynth',],
       'package_dir':{'rtpsynth':'python'},
       'ext_modules': get_ex_mod(),
+      'cmdclass': {'runctest': RunCTest},
       'classifiers': [
             'License :: OSI Approved :: BSD License',
             'Operating System :: POSIX',
