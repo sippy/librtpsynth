@@ -42,8 +42,12 @@ Generate continuous sequence of RTP packets of the same payload type.
   as parameters. Returns the old state.
 
 - `void rsynth_resync(void *ri, struct rsynth_seq *rsp);`
-  Resynchronizes the RTP packet sequence. Takes the handle and optionally a
-  sequence structure as parameters.
+  Resynchronizes the RTP packet sequence. Takes the handle and optionally
+  a sequence structure as parameters. Use this function when a time
+  discontinuity is expected in packet generation, such as when VAD (Voice
+  Activity Detection) is active. The library will recalculate the timestamp
+  for the next packet based on the current system clock and the time the
+  last packet was generated.
 
 ### RtpGen (Python)
 
