@@ -72,6 +72,9 @@ class ERSFrame():
          self.lseq_start = content.frame.ers.lseq_start
          self.lseq_end = content.frame.ers.lseq_end
 
+class RTPParseError(Exception):
+    pass
+
 class FrameWrapper():
     _rsth = None
     content = None
@@ -98,6 +101,8 @@ class FrameWrapper():
     def __repr__(self):
         return self.__str__()
 
+RTP_PARSER_OK = 1
+
 class RtpJBuf(object):
     _hndl = None
     _rsth = None
@@ -118,6 +123,8 @@ class RtpJBuf(object):
 
     def _proc_RJBUdpInR(self, rval, bdata = None):
         if rval.error != 0:
+            if rval.error < RTP_PARSER_OK:
+                raise RTPParseError(f'rtpjbuf_udp_in(): error {rval.error}')
             raise RuntimeError(f'rtpjbuf_udp_in(): error {rval.error}')
         if bdata is not None:
             self._ref_cache[addressof(bdata[0])] = bdata
