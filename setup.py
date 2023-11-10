@@ -12,11 +12,14 @@ rs_srcs = ['src/rtpsynth.c', 'src/rtp.c', 'src/rtpjbuf.c']
 
 extra_compile_args = ['--std=c11', '-Wno-zero-length-array', '-Wall', '-pedantic', '-flto']
 extra_link_args = ['-flto']
+debug_opts = (('-g3', '-O0'))
+nodebug_opts = (('-march=native', '-O3'))
 if False:
-    extra_compile_args.extend(('-g3', '-O0'))
+    extra_compile_args.extend(debug_opts)
+    extra_link_args.extend(debug_opts)
 else:
-    extra_compile_args.extend(('-march=native', '-O3'))
-    extra_link_args.extend(('-march=native', '-O3'))
+    extra_compile_args.extend(nodebug_opts)
+    extra_link_args.extend(nodebug_opts)
 
 module1 = Extension(RSTH_MOD_NAME, sources = rs_srcs, \
     extra_link_args = extra_link_args, \
