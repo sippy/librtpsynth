@@ -70,7 +70,12 @@ typedef enum rtp_type rtp_type_t;
 #define RTP_NSAMPLES_UNKNOWN  (-1)
 
 #if !defined(BYTE_ORDER)
-# error "BYTE_ORDER needs to be defined"
+# if defined(__BYTE_ORDER__)
+#  define BYTE_ORDER __BYTE_ORDER__
+#  define BIG_ENDIAN __ORDER_BIG_ENDIAN__
+# else
+#  error "BYTE_ORDER or __BYTE_ORDER__ needs to be defined"
+# endif
 #endif
 
 /*
