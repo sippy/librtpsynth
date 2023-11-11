@@ -156,6 +156,10 @@ lms_init:
             d_assert(rjbp->last_lseq < fp->rtp.lseq);
             rjbp->last_lseq = fp->rtp.lseq;
             ruir.ready = fp;
+        } else if x_unlikely(warm_up && fp->rtp.lseq == 0) {
+            d_assert(rjbp->last_lseq == LRS_DEFAULT);
+            rjbp->last_lseq = fp->rtp.lseq;
+            ruir.ready = fp;
         } else {
             rjbp->jb.head = fp;
             rjbp->jb.size = 1;
