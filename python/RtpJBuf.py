@@ -1,5 +1,5 @@
 from ctypes import c_void_p, c_int, c_size_t, c_uint32, c_uint16, c_uint64, \
-  POINTER, Union, Structure, create_string_buffer, addressof
+  POINTER, Union, Structure, create_string_buffer, addressof, string_at, cast
 
 from .RtpSynth import _rsth
 
@@ -79,13 +79,16 @@ class FrameWrapper():
     _rsth = None
     content = None
     data = None
+    rtp_data: bytes
 
-    def __init__(self, _rsth, content, data):
+    def __init__(self, _rsth, content: RTPFrame, data):
         self._rsth = _rsth
         if content.type == RTPFrameType.ERS:
             self.content = ERSFrame(content)
         else:
             self.content = content
+            rtp_data = cast(content.frame.rtp.data + content.frame.rtp.info.data_offset, c_void_p)
+            self.rtp_data = string_at(rtp_data, content.frame.rtp.info.data_size)
         self.data = data
 
     def __del__(self):
