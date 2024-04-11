@@ -116,6 +116,16 @@ rsynth_next_pkt(void *_rip, int plen, int pt)
     return (rnp);
 }
 
+void
+rsynth_skip(void *_rip, int npkts)
+{
+    struct rsynth_inst *rip;
+
+    rip = (struct rsynth_inst *)_rip;
+    rip->l.ts += rip->ts_inc * npkts;
+    return;
+}
+
 unsigned int
 rsynth_set_mbt(void *_rip, unsigned int new_st)
 {

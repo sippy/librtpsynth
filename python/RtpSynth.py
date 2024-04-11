@@ -58,6 +58,7 @@ _rsth.rsynth_next_pkt_pa.argtypes = [c_void_p, c_int, c_int, c_void_p, c_uint, c
 _rsth.rsynth_set_mbt.argtypes = [c_void_p, c_uint]
 _rsth.rsynth_set_mbt.restype = c_uint
 _rsth.rsynth_resync.argtypes = [c_void_p, c_void_p]
+_rsth.rsynth_skip.argtypes = [c_void_p, c_int]
 
 _rsth.rsynth_pkt_free.argtypes = [c_void_p,]
 
@@ -91,6 +92,9 @@ class RtpSynth(object):
 
     def resync(self):
         self._rsth.rsynth_resync(self._hndl, None)
+
+    def skip(self, n):
+        self._rsth.rsynth_skip(self._hndl, n)
 
     def __del__(self):
         if bool(self._hndl):
