@@ -25,7 +25,8 @@ class RTPPacket(Structure):
 class ERSFrame(Structure):
     _fields_ = [
         ("lseq_start", c_uint64),
-        ("lseq_end", c_uint64)
+        ("lseq_end", c_uint64),
+        ("ts_diff", c_uint32),
     ]
 
 class RTPFrameType():
@@ -64,13 +65,15 @@ _rsth.rtpjbuf_flush.argtypes = [c_void_p]
 _rsth.rtpjbuf_flush.restype = RJBUdpInR
 
 class ERSFrame():
-     lseq_start: int
-     lseq_end: int
-     type = RTPFrameType.ERS
+    lseq_start: int
+    lseq_end: int
+    ts_diff: int
+    type = RTPFrameType.ERS
 
-     def __init__(self, content):
-         self.lseq_start = content.frame.ers.lseq_start
-         self.lseq_end = content.frame.ers.lseq_end
+    def __init__(self, content):
+        self.lseq_start = content.frame.ers.lseq_start
+        self.lseq_end = content.frame.ers.lseq_end
+        self.ts_diff = content.frame.ers.ts_diff
 
 class RTPParseError(Exception):
     pass

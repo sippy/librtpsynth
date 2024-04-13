@@ -31,6 +31,7 @@ struct rtpjbuf_stats {
 
 struct rtpjbuf_inst {
     uint64_t last_lseq;
+    uint32_t last_ts;
     uint64_t last_max_lseq;
     uint64_t lseq_mask;
     struct jitter_buffer jb;
@@ -85,12 +86,32 @@ rtpjbuf_dtor(void *_rjbp)
 static struct rtp_frame *
 insert_ers_frame(struct rtpjbuf_inst *rjbp, struct rtp_frame *fp)
 {
+    uint32_t ts_diff, lseq_diff;
+
     if (rjbp->last_lseq + 1 == fp->rtp.lseq)
         return (fp);
     rjbp->ers_frame.next = fp;
     rjbp->ers_frame.ers.lseq_start = rjbp->last_lseq + 1;
     rjbp->ers_frame.ers.lseq_end = fp->rtp.lseq - 1;
+    if (rjbp->last_ts > fp->rtp.info.ts) {
+        uint64_t ts_diff64 = (uint64_t)0x100000000 + fp->rtp.info.ts - rjbp->last_ts;
+        d_assert(ts_diff64 < 0x100000000);
+        ts_diff = ts_diff64;
+    } else {
+        ts_diff = fp->rtp.info.ts - rjbp->last_ts;
+    }
+    lseq_diff = rjbp->ers_frame.ers.lseq_end - rjbp->ers_frame.ers.lseq_start + 1;
+    rjbp->ers_frame.ers.ts_diff = ts_diff * lseq_diff / (lseq_diff + 1);
     return (&rjbp->ers_frame);
+}
+
+static void
+save_last(struct rtpjbuf_inst *rjbp, const struct rtp_packet *rp)
+{
+
+    d_assert(rjbp->last_lseq == LRS_DEFAULT || rjbp->last_lseq < rp->lseq);
+    rjbp->last_lseq = rp->lseq;
+    rjbp->last_ts = rp->info.ts;
 }
 
 struct rjb_udp_in_r
@@ -153,12 +174,11 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
 lms_init:
         rjbp->last_max_lseq = fp->rtp.lseq;
         if (!warm_up && rjbp->last_lseq == fp->rtp.lseq - 1) {
-            d_assert(rjbp->last_lseq < fp->rtp.lseq);
-            rjbp->last_lseq = fp->rtp.lseq;
+            save_last(rjbp, &fp->rtp);
             ruir.ready = fp;
         } else if x_unlikely(warm_up && fp->rtp.lseq == 0) {
             d_assert(rjbp->last_lseq == LRS_DEFAULT);
-            rjbp->last_lseq = fp->rtp.lseq;
+            save_last(rjbp, &fp->rtp);
             ruir.ready = fp;
         } else {
             rjbp->jb.head = fp;
@@ -205,7 +225,7 @@ lms_init:
         d_assert(!warm_up || rjbp->last_lseq == LMS_DEFAULT);
         if (!warm_up)
             fp = insert_ers_frame(rjbp, fp);
-        rjbp->last_lseq = ifp->rtp.lseq;
+        save_last(rjbp, &ifp->rtp);
         ifp->next = NULL;
         ruir.ready = fp;
         if (rjbp->jb.head == NULL)
@@ -245,7 +265,7 @@ resume:
         }
     }
     ruir.ready = insert_ers_frame(rjbp, fp);
-    rjbp->last_lseq = ifp->rtp.lseq;
+    save_last(rjbp, &ifp->rtp);
     rjbp->jb.head = NULL;
     rjbp->jb.size = 0;
     return (ruir);

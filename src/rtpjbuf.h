@@ -11,6 +11,7 @@ struct rtp_packet {
 struct ers_frame {
     uint64_t lseq_start;
     uint64_t lseq_end;
+    uint32_t ts_diff;
 };
 
 struct rtp_frame {
