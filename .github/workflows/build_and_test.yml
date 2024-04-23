@@ -1,0 +1,89 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Build, Test & Publush
+
+# Controls when the action will run.
+on:
+  # Triggers the workflow on all push or pull request events
+  push:
+  pull_request:
+
+  release:
+    types: [created]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 0 * * *"
+
+# added using https://github.com/step-security/secure-repo
+permissions:
+  contents: read
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  build_and_test_python:
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        compiler: ['gcc', 'clang']
+
+    runs-on: ubuntu-latest
+    env:
+      COMPILER: ${{ matrix.compiler }}
+      PYTHON_CMD: "python${{ matrix.python-version }}"
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel
+
+      - name: build
+        run: CC=${COMPILER} LDSHARED="${COMPILER} -shared" ${PYTHON_CMD} setup.py build sdist
+
+      - name: install
+        run: pip install dist/[Rr]tp*.gz
+
+      - name: test
+        run: |
+          CC=${COMPILER} ${PYTHON_CMD} setup.py runctest
+          ${PYTHON_CMD} tests/test_jbuf.py
+
+  publish_wheels:
+    needs: build_and_test_python
+    if: github.event_name == 'release' && github.event.action == 'created'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/RtpSynth
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel
+
+      - name: build
+        run: python setup.py build sdist
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
