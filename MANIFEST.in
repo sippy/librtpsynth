@@ -1,0 +1,3 @@
+include setup/__init__.py setup/RunCTest.py
+include src/rsth_timeops.h src/rtp.h src/rtp_info.h src/rtpjbuf.h src/rtpsynth.h src/Symbol.map
+include README.md
