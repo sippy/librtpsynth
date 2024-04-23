@@ -38,9 +38,9 @@ def get_ex_mod():
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
-kwargs = {'name':'RtpSynth',
+kwargs = {'name':'rtpsynth',
       'version':'1.0',
-      'description':'Library optimized to generate sequence of the RTP packets',
+      'description':'Library optimized to generate/process sequence of the RTP packets',
       'long_description': long_description,
       'long_description_content_type': "text/markdown",
       'author':'Maksym Sobolyev',

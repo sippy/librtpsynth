@@ -1,7 +1,7 @@
 # librtpsynth
 
-Low-level library optimized to generate sequence of the RTP packets. Based on
-some code and ideas from the RTPProxy projects.
+Low-level library optimized to generate and/or consume sequence of the RTP
+packets. Based on some code and ideas from the RTPProxy projects.
 
 Originally designed to supplement Python code to do low-level bits shuffling
 for the proof of concept IoT implementation.
