@@ -4,6 +4,7 @@ import os
 
 from distutils.core import setup
 from distutils.core import Extension
+from sysconfig import get_platform
 
 from python.env import RSTH_MOD_NAME
 from setup.RunCTest import RunCTest
@@ -28,7 +29,8 @@ module1 = Extension(RSTH_MOD_NAME, sources = rs_srcs, \
 RunCTest.extra_link_args = extra_link_args.copy()
 RunCTest.extra_compile_args = extra_compile_args
 
-extra_link_args.append('-Wl,--version-script=src/Symbol.map')
+if not get_platform().startswith('macosx-'):
+    extra_link_args.append('-Wl,--version-script=src/Symbol.map')
 
 def get_ex_mod():
     if 'NO_PY_EXT' in os.environ:
