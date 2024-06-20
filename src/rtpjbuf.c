@@ -1,4 +1,8 @@
+#if !defined(_WIN32) && !defined(_WIN64)
 #include <arpa/inet.h>
+#else
+#include "winnet.h"
+#endif
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -12,7 +16,19 @@
 #define LMS_DEFAULT LRS_DEFAULT
 
 #define BOOLVAL(x)  (x)
+#if !defined(_WIN32) && !defined(_WIN64)
 #define x_unlikely(x) (__builtin_expect((x), 0), (x))
+#else
+#define x_unlikely(x) (x)
+#endif
+
+#if defined(_WIN32) || defined(_WIN64)
+#pragma comment(linker, "/export:rtpjbuf_ctor")
+#pragma comment(linker, "/export:rtpjbuf_dtor")
+#pragma comment(linker, "/export:rtpjbuf_frame_dtor")
+#pragma comment(linker, "/export:rtpjbuf_udp_in")
+#pragma comment(linker, "/export:rtpjbuf_flush")
+#endif
 
 struct jitter_buffer {
     struct rtp_frame *head;

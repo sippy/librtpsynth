@@ -78,10 +78,17 @@ typedef enum rtp_type rtp_type_t;
 # endif
 #endif
 
+#ifdef _MSC_VER
+#  define PACKED_STRUCT(name) \
+    __pragma(pack(push, 1)) struct name __pragma(pack(pop))
+#elif defined(__GNUC__)
+#  define PACKED_STRUCT(name) struct __attribute__((packed)) name
+#endif
+
 /*
  * RTP data header
  */
-struct rtp_hdr {
+PACKED_STRUCT(rtp_hdr) {
 #if BYTE_ORDER == BIG_ENDIAN
     unsigned int version:2;	/* protocol version */
     unsigned int p:1;		/* padding flag */
@@ -101,13 +108,13 @@ struct rtp_hdr {
     uint32_t ts;		/* timestamp */
     uint32_t ssrc;		/* synchronization source */
     uint32_t csrc[0];		/* optional CSRC list */
-} __attribute__((__packed__));
+};
 
-struct rtp_hdr_ext {
+PACKED_STRUCT(rtp_hdr_ext) {
     uint16_t profile;		/* defined by profile */
     uint16_t length;		/* length of the following array in 32-byte words */
     uint32_t extension[0];	/* actual extension data */
-} __attribute__((__packed__));
+};
 
 #if !defined(rtp_hdr_t_DEFINED)
 typedef struct rtp_hdr rtp_hdr_t;

@@ -23,15 +23,42 @@
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#if defined(_WIN32) || defined(_WIN64)
+#define _CRT_RAND_S
+#pragma comment(linker, "/export:rsynth_ctor")
+#pragma comment(linker, "/export:rsynth_next_pkt")
+#pragma comment(linker, "/export:rsynth_next_pkt_pa")
+#pragma comment(linker, "/export:rsynth_skip")
+#pragma comment(linker, "/export:rsynth_pkt_free")
+#pragma comment(linker, "/export:rsynth_dtor")
+#pragma comment(linker, "/export:rsynth_set_mbt")
+#pragma comment(linker, "/export:rsynth_resync")
+#endif
+
 #define _DEFAULT_SOURCE
 
+#if !defined(_WIN32) && !defined(_WIN64)
 #include <arpa/inet.h>
+#else
+#include "winnet.h"
+#endif
 
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#if defined(_WIN32) || defined(_WIN64)
+static long
+random(void)
+{
+    unsigned int r;
+
+    rand_s(&r);
+    return r;
+}
+#endif
 
 #include "rtp.h"
 #include "rtpsynth.h"
@@ -42,9 +69,36 @@ struct rsynth_inst {
     int ptime;
     struct rsynth_seq l;
     int ts_inc;
-    struct rtp_hdr model;
     struct timespec last_ts;
+    struct rtp_hdr model;
 };
+
+#if defined(_WIN32) || defined(_WIN64)
+#include <profileapi.h>
+
+static int
+clock_gettime_monotonic(struct timespec *tv)
+{
+    static LARGE_INTEGER ticksPerSec;
+    LARGE_INTEGER ticks;
+
+    if (!ticksPerSec.QuadPart) {
+        QueryPerformanceFrequency(&ticksPerSec);
+        if (!ticksPerSec.QuadPart) {
+            errno = ENOTSUP;
+            return -1;
+        }
+    }
+
+    QueryPerformanceCounter(&ticks);
+
+    tv->tv_sec = (long)(ticks.QuadPart / ticksPerSec.QuadPart);
+    tv->tv_nsec = (long)(((ticks.QuadPart % ticksPerSec.QuadPart) * NSEC_IN_SEC) / ticksPerSec.QuadPart);
+
+    return 0;
+}
+#define clock_gettime(_, x) clock_gettime_monotonic(x)
+#endif
 
 void *
 rsynth_ctor(int srate, int ptime)

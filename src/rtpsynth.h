@@ -27,6 +27,12 @@
 
 #pragma once
 
+#if !defined(_WIN32) && !defined(_WIN64)
+#define EXPORT
+#else
+#define EXPORT __declspec(dllexport)
+#endif
+
 struct rsynth_seq {
     unsigned long long ts;
     unsigned long long seq;

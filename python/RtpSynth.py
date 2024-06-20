@@ -23,11 +23,12 @@
 
 from ctypes import cdll, c_void_p, c_int, create_string_buffer, c_uint
 from math import modf
-import sys, os, site, sysconfig
+import sys, os, site
+from sysconfig import get_config_var, get_platform
 
 from .env import RSTH_MOD_NAME
 
-_esuf = sysconfig.get_config_var('EXT_SUFFIX')
+_esuf = get_config_var('EXT_SUFFIX')
 if not _esuf:
     _esuf = '.so'
 try:

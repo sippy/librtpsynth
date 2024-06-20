@@ -28,9 +28,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#if !defined(_WIN32) && !defined(_WIN64)
 #include <netinet/in.h>
+#else
+#include "winnet.h"
+#endif
 #include <assert.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "rtp.h"
 #include "rtp_info.h"
