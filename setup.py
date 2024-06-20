@@ -9,15 +9,27 @@ from sysconfig import get_platform
 from python.env import RSTH_MOD_NAME
 from setup.RunCTest import RunCTest
 
+is_win = get_platform().startswith('win')
+is_mac = get_platform().startswith('macosx-')
+
 rs_srcs = ['src/rtpsynth.c', 'src/rtp.c', 'src/rtpjbuf.c']
 
-extra_compile_args = ['--std=c11', '-Wno-zero-length-array', '-Wall', '-pedantic', '-flto']
-extra_link_args = ['-flto']
+if not is_mac:
+    rs_srcs.append('python/RtpSynth_mod.c')
+
+extra_compile_args = ['-Wall']
+if not is_win:
+    extra_compile_args += ['--std=c11', '-Wno-zero-length-array',
+                           '-flto', '-pedantic']
+else:
+    extra_compile_args.append('/std:clatest')
+extra_link_args = ['-flto'] if not is_win else []
 debug_opts = (('-g3', '-O0'))
-if not get_platform().startswith('macosx-'):
+
+if not is_mac and not is_win:
     nodebug_opts = (('-march=native', '-O3'))
 else:
-    nodebug_opts = (('-O3',))
+    nodebug_opts = (('-O3',)) if not is_win else ()
 if False:
     extra_compile_args.extend(debug_opts)
     extra_link_args.extend(debug_opts)
@@ -32,7 +44,7 @@ module1 = Extension(RSTH_MOD_NAME, sources = rs_srcs, \
 RunCTest.extra_link_args = extra_link_args.copy()
 RunCTest.extra_compile_args = extra_compile_args
 
-if not get_platform().startswith('macosx-'):
+if not is_mac and not is_win:
     extra_link_args.append('-Wl,--version-script=src/Symbol.map')
 
 def get_ex_mod():

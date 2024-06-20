@@ -29,11 +29,20 @@ jobs:
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
         compiler: ['gcc', 'clang']
         os: [macos, ubuntu]
+        include:
+          - python-version: '3.10'
+            compiler: microsoft
+            os: windows
+          - python-version: '3.11'
+            compiler: microsoft
+            os: windows
+          - python-version: '3.12'
+            compiler: microsoft
+            os: windows
 
     runs-on: ${{ matrix.os }}-latest
     env:
       COMPILER: ${{ matrix.compiler }}
-      PYTHON_CMD: "python${{ matrix.python-version }}"
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -49,17 +58,33 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install setuptools wheel
+        shell: bash
 
       - name: build
-        run: CC=${COMPILER} LDSHARED="${COMPILER} -shared" ${PYTHON_CMD} setup.py build sdist
+        run: CC=${COMPILER} LDSHARED="${COMPILER} -shared" python setup.py build sdist
+        shell: bash
+
+#      - if: ${{ matrix.os == 'windows' }} && ${{ matrix.python-version == '3.10' }}
+#        name: debug1
+#        run: |
+#          ls -l ./build/temp.win-amd64-cpython-310/Release/python/
+#        shell: bash
+
+#      - if: ${{ matrix.os == 'windows' }} && ${{ matrix.python-version == '3.10' }}
+#        name: debug2
+#        run: |
+#          $dumpbin = 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.40.33807\bin\HostX86\x64\dumpbin.exe'
+#          & $dumpbin /exports .\build\temp.win-amd64-cpython-310\Release\python\_rtpsynth.cp310-win_amd64.lib
 
       - name: install
         run: pip install dist/[Rr]tp*.gz
+        shell: bash
 
       - name: test
         run: |
-          CC=${COMPILER} ${PYTHON_CMD} setup.py runctest
-          ${PYTHON_CMD} tests/test_jbuf.py
+          CC=${COMPILER} python setup.py runctest
+          python tests/test_jbuf.py
+        shell: bash
 
   publish_wheels:
     needs: build_and_test_python

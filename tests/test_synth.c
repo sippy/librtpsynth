@@ -5,11 +5,22 @@
 
 #include "rtpsynth.h"
 
+#if !defined(_WIN32) && !defined(_WIN64)
 static void inline
 taint(char *p) {
 
     __asm__ volatile ("" : : "m" (*p));
 }
+#else
+#include <intrin.h>
+
+static inline void taint(char *p) {
+    // Use a dummy intrinsic to reference the pointer
+    _ReadWriteBarrier();
+    *((volatile char*)p) = *((volatile char*)p);
+    _ReadWriteBarrier();
+}
+#endif
 
 int main(void) {
     double tdur = 1.0;
