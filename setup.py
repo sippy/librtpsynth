@@ -21,6 +21,8 @@ extra_compile_args = ['-Wall']
 if not is_win:
     extra_compile_args += ['--std=c11', '-Wno-zero-length-array',
                            '-flto', '-pedantic']
+else:
+    extra_compile_args.append('/std:clatest')
 extra_link_args = ['-flto'] if not is_win else []
 debug_opts = (('-g3', '-O0'))
 

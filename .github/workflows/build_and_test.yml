@@ -33,6 +33,12 @@ jobs:
           - python-version: '3.10'
             compiler: microsoft
             os: windows
+          - python-version: '3.11'
+            compiler: microsoft
+            os: windows
+          - python-version: '3.12'
+            compiler: microsoft
+            os: windows
 
     runs-on: ${{ matrix.os }}-latest
     env:
@@ -58,18 +64,17 @@ jobs:
         run: CC=${COMPILER} LDSHARED="${COMPILER} -shared" python setup.py build sdist
         shell: bash
 
-      - if: ${{ matrix.os == 'windows' }}
-        name: debug1
-        run: |
-          ls -l ./build/temp.win-amd64-cpython-310/Release/python/
-        shell: bash
+#      - if: ${{ matrix.os == 'windows' }} && ${{ matrix.python-version == '3.10' }}
+#        name: debug1
+#        run: |
+#          ls -l ./build/temp.win-amd64-cpython-310/Release/python/
+#        shell: bash
 
-      - if: ${{ matrix.os == 'windows' }}
-        name: debug2
-        run: |
-          $dumpbin = 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.40.33807\bin\HostX86\x64\dumpbin.exe'
-          & $dumpbin /exports .\build\temp.win-amd64-cpython-310\Release\python\_rtpsynth.cp310-win_amd64.lib
-        #shell: cmd
+#      - if: ${{ matrix.os == 'windows' }} && ${{ matrix.python-version == '3.10' }}
+#        name: debug2
+#        run: |
+#          $dumpbin = 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.40.33807\bin\HostX86\x64\dumpbin.exe'
+#          & $dumpbin /exports .\build\temp.win-amd64-cpython-310\Release\python\_rtpsynth.cp310-win_amd64.lib
 
       - name: install
         run: pip install dist/[Rr]tp*.gz

@@ -19,7 +19,7 @@
 #if !defined(_WIN32) && !defined(_WIN64)
 #define x_unlikely(x) (__builtin_expect((x), 0), (x))
 #else
-#define x_unlikely(x) (x)
+#define x_unlikely(x) (x) [[unlikely]]
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -158,9 +158,9 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
     fp->rtp.lseq = rjbp->lseq_mask | fp->rtp.info.seq;
 
     int warm_up = BOOLVAL(rjbp->last_lseq == LRS_DEFAULT);
-    x_unlikely(warm_up);
+    if x_unlikely(warm_up) {};
     int lms_warm_up = BOOLVAL(rjbp->last_max_lseq == LMS_DEFAULT);
-    x_unlikely(lms_warm_up);
+    if x_unlikely(lms_warm_up) {};
     if (lms_warm_up) {
         d_assert(rjbp->jb.head == NULL);
         goto lms_init;
