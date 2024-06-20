@@ -11,7 +11,7 @@ taint(char *p) {
     __asm__ volatile ("" : : "m" (*p));
 }
 
-int main() {
+int main(void) {
     double tdur = 1.0;
     uint64_t i = 0;
     clock_t start, end;

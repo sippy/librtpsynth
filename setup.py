@@ -14,7 +14,10 @@ rs_srcs = ['src/rtpsynth.c', 'src/rtp.c', 'src/rtpjbuf.c']
 extra_compile_args = ['--std=c11', '-Wno-zero-length-array', '-Wall', '-pedantic', '-flto']
 extra_link_args = ['-flto']
 debug_opts = (('-g3', '-O0'))
-nodebug_opts = (('-march=native', '-O3'))
+if not get_platform().startswith('macosx-'):
+    nodebug_opts = (('-march=native', '-O3'))
+else:
+    nodebug_opts = (('-O3',))
 if False:
     extra_compile_args.extend(debug_opts)
     extra_link_args.extend(debug_opts)
