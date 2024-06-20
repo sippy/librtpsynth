@@ -83,6 +83,7 @@ jobs:
       - name: test
         run: |
           CC=${COMPILER} python setup.py runctest
+          python tests/test_synth.py
           python tests/test_jbuf.py
         shell: bash
 
