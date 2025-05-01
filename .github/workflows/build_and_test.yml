@@ -88,30 +88,17 @@ jobs:
           python tests/test_jbuf.py
         shell: bash
 
-  publish_wheels:
-    needs: build_and_test_python
-    if: github.event_name == 'release' && github.event.action == 'created'
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/rtpsynth
+  build_wheels:
     permissions:
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
+      packages: write
+    needs: build_and_test_python
+    uses: sippy/cimagic/.github/workflows/BuildPythonWheels.yml@v1
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install setuptools wheel
-
-      - name: build
-        run: python setup.py build sdist
-
-      - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+  publish_all_wheels:
+    needs: build_wheels
+    permissions:
+      actions: read
+      contents: read
+    uses: sippy/cimagic/.github/workflows/PublishWheels.yml@v1
+    with:
+      pypi_project: rtpsynth
