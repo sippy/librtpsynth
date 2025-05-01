@@ -25,11 +25,13 @@ else:
     extra_compile_args.append('/std:clatest')
 extra_link_args = ['-flto'] if not is_win else []
 debug_opts = (('-g3', '-O0'))
+nodebug_opts = ('-O3',) if not is_win else ()
 
-if not is_mac and not is_win:
-    nodebug_opts = (('-march=native', '-O3'))
-else:
-    nodebug_opts = (('-O3',)) if not is_win else ()
+if get_platform() == 'linux-x86_64':
+    # This is to disable x86-64-v2, see
+    # https://github.com/pypa/manylinux/issues/1725
+    extra_compile_args.append('-march=x86-64')
+
 if False:
     extra_compile_args.extend(debug_opts)
     extra_link_args.extend(debug_opts)
@@ -56,7 +58,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 kwargs = {'name':'rtpsynth',
-      'version':'1.1',
+      'version':'1.2',
       'description':'Library optimized to generate/process sequence of the RTP packets',
       'long_description': long_description,
       'long_description_content_type': "text/markdown",
