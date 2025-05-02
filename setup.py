@@ -7,8 +7,8 @@ from distutils.core import Extension
 from sysconfig import get_platform
 
 from python.env import RSTH_MOD_NAME
-from setup.RunCTest import RunCTest
-from setup.CheckVersion import CheckVersion
+from build_tools.RunCTest import RunCTest
+from build_tools.CheckVersion import CheckVersion
 
 is_win = get_platform().startswith('win')
 is_mac = get_platform().startswith('macosx-')

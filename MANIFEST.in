@@ -1,4 +1,4 @@
-include setup/__init__.py setup/RunCTest.py setup/CheckVersion.py
+include build_tools/__init__.py build_tools/RunCTest.py build_tools/CheckVersion.py
 include src/rsth_timeops.h src/rtp.h src/rtp_info.h src/rtpjbuf.h src/rtpsynth.h src/Symbol.map
 include src/winnet.h python/RtpSynth_mod.c
 include README.md
