@@ -8,6 +8,7 @@ from sysconfig import get_platform
 
 from python.env import RSTH_MOD_NAME
 from setup.RunCTest import RunCTest
+from setup.CheckVersion import CheckVersion
 
 is_win = get_platform().startswith('win')
 is_mac = get_platform().startswith('macosx-')
@@ -68,7 +69,7 @@ kwargs = {'name':'rtpsynth',
       'packages':['rtpsynth',],
       'package_dir':{'rtpsynth':'python'},
       'ext_modules': get_ex_mod(),
-      'cmdclass': {'runctest': RunCTest},
+      'cmdclass': {'runctest': RunCTest, 'checkversion': CheckVersion},
       'classifiers': [
             'License :: OSI Approved :: BSD License',
             'Operating System :: POSIX',
