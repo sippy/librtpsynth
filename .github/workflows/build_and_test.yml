@@ -127,6 +127,19 @@ jobs:
     - name: build
       run: python setup.py build sdist
 
+    - name: Check release version number
+      if: github.event_name == 'release' && github.event.action == 'published'
+      run: |
+        GIT_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+        GIT_BRANCH="${GIT_BRANCH#refs/tags/}"
+        python setup.py checkversion --tag="${GIT_BRANCH}"
+
     - name: Publish package distributions to PyPI
       if: github.event_name == 'release' && github.event.action == 'published'
       uses: pypa/gh-action-pypi-publish@release/v1
+
+  roll_release:
+    needs: publish_all_wheels
+    permissions:
+      contents: write
+    uses: sippy/cimagic/.github/workflows/RollReleaseDraft.yml@v1
