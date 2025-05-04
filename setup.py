@@ -70,8 +70,8 @@ kwargs = {'name':'rtpsynth',
       'package_dir':{'rtpsynth':'python'},
       'ext_modules': get_ex_mod(),
       'cmdclass': {'runctest': RunCTest, 'checkversion': CheckVersion},
+      'license': 'BSD-2-Clause',
       'classifiers': [
-            'License :: OSI Approved :: BSD License',
             'Operating System :: POSIX',
             'Programming Language :: C',
             'Programming Language :: Python'
