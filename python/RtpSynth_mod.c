@@ -1,6 +1,10 @@
 #include <assert.h>
 #include <stdbool.h>
 
+#if !defined(__cplusplus) && !defined(nullptr)
+#define nullptr NULL
+#endif
+
 #include <Python.h>
 
 #define MODULE_BASENAME _rtpsynth
