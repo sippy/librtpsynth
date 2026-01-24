@@ -6,18 +6,14 @@ from distutils.core import setup
 from distutils.core import Extension
 from sysconfig import get_platform
 
-from python.env import RSTH_MOD_NAME
 from build_tools.RunCTest import RunCTest
 from build_tools.CheckVersion import CheckVersion
 
 is_win = get_platform().startswith('win')
 is_mac = get_platform().startswith('macosx-')
 
-rs_srcs = ['src/rtpsynth.c', 'src/rtp.c', 'src/rtpjbuf.c']
+rtpsynth_ext_srcs = ['python/RtpSynth_mod.c', 'src/rtpsynth.c', 'src/rtp.c']
 rtpjbuf_ext_srcs = ['python/RtpJBuf_mod.c', 'src/rtp.c', 'src/rtpjbuf.c']
-
-if not is_mac:
-    rs_srcs.append('python/RtpSynth_mod.c')
 
 extra_compile_args = ['-Wall']
 if not is_win:
@@ -41,18 +37,18 @@ else:
     extra_compile_args.extend(nodebug_opts)
     extra_link_args.extend(nodebug_opts)
 
-extra_link_args_mod1 = extra_link_args.copy()
-if not is_mac and not is_win:
-    extra_link_args_mod1.append('-Wl,--version-script=src/Symbol.map')
-
-module1 = Extension(RSTH_MOD_NAME, sources = rs_srcs, \
-    include_dirs = ['src'], \
-    extra_link_args = extra_link_args_mod1, \
-    extra_compile_args = extra_compile_args)
-
 rtpjbuf_link_args = extra_link_args.copy()
 if is_mac:
     rtpjbuf_link_args.extend(['-undefined', 'dynamic_lookup'])
+
+rtpsynth_link_args = extra_link_args.copy()
+if is_mac:
+    rtpsynth_link_args.extend(['-undefined', 'dynamic_lookup'])
+
+module1 = Extension('rtpsynth.RtpSynth', sources = rtpsynth_ext_srcs, \
+    include_dirs = ['src'], \
+    extra_link_args = rtpsynth_link_args, \
+    extra_compile_args = extra_compile_args)
 
 module2 = Extension('rtpsynth.RtpJBuf', sources = rtpjbuf_ext_srcs, \
     include_dirs = ['src'], \
