@@ -84,11 +84,12 @@ def run_test(test_case, verbose = False):
         assert ers_cnt_add < 200
         ers_cnt += ers_cnt_add
     etime = monotonic()
+    mpps = (rtp_cnt + ers_cnt) / max(etime - btime, 1e-9) / 1e6
 
     del rs
     print(f'ers_cnt: {ers_cnt}')
     print(f'rtp_cnt: {rtp_cnt}')
-    print(f'---\nTotal: {rtp_cnt + ers_cnt}, time={etime - btime}')
+    print(f'---\nConsumed {rtp_cnt + ers_cnt}, time={etime - btime}, mpps={mpps:.2f}')
     assert test_case.ers_cnt == ers_cnt and test_case.rtp_cnt == rtp_cnt
 
 if __name__ == '__main__':

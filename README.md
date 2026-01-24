@@ -6,8 +6,8 @@ packets. Based on some code and ideas from the RTPProxy projects.
 Originally designed to supplement Python code to do low-level bits shuffling
 for the proof of concept IoT implementation.
 
-Reasonably fast, 100-200x real-time (i.e. 100-200K packets per second) when
-used from the Python code. 100x of that (10-20M PPS) if used from C code
+Reasonably fast, 500-700x real-time (i.e. 0.5-1M packets per second) when
+used from the Python code. 20x of that (10-20M PPS) if used from C code
 directly.
 
 ## RTP Generation
@@ -59,5 +59,29 @@ fixed-size jitter buffer to de-duplicate and re-order packets if
 needed.
 
 ### rtpjbuf (c)
+
+`#include <rtpjbuf.h>`
+
+- `void *rtpjbuf_ctor(unsigned int capacity);`
+  Creates a jitter buffer with the given capacity (number of packets).
+  Returns an opaque handle.
+
+- `void rtpjbuf_dtor(void *rjbp);`
+  Destroys the jitter buffer and frees all internal state.
+
+- `struct rjb_udp_in_r rtpjbuf_udp_in(void *rjbp, const unsigned char *data, size_t size);`
+  Parse and insert a single UDP datagram. Returns a result structure with:
+  `ready` list (in-order frames ready to consume), `drop` list (late/dup frames),
+  and `error` for parser/memory failures.
+
+- `struct rjb_udp_in_r rtpjbuf_flush(void *rjbp);`
+  Flushes the jitter buffer and returns any queued frames (plus any drops).
+
+- `void rtpjbuf_frame_dtor(void *rfp);`
+  Frees a single RTP frame returned via `ready`/`drop`.
+
+Frames in `ready`/`drop` are a linked list of `struct rtp_frame`:
+- `type == RFT_RTP` provides `rtp.info`, `rtp.lseq`, and `rtp.data`.
+- `type == RFT_ERS` provides erasure info (`lseq_start`, `lseq_end`, `ts_diff`).
 
 ### RtpJBuf (Python)

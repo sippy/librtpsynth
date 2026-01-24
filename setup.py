@@ -14,6 +14,7 @@ is_win = get_platform().startswith('win')
 is_mac = get_platform().startswith('macosx-')
 
 rs_srcs = ['src/rtpsynth.c', 'src/rtp.c', 'src/rtpjbuf.c']
+rtpjbuf_ext_srcs = ['python/RtpJBuf_mod.c', 'src/rtp.c', 'src/rtpjbuf.c']
 
 if not is_mac:
     rs_srcs.append('python/RtpSynth_mod.c')
@@ -40,20 +41,31 @@ else:
     extra_compile_args.extend(nodebug_opts)
     extra_link_args.extend(nodebug_opts)
 
+extra_link_args_mod1 = extra_link_args.copy()
+if not is_mac and not is_win:
+    extra_link_args_mod1.append('-Wl,--version-script=src/Symbol.map')
+
 module1 = Extension(RSTH_MOD_NAME, sources = rs_srcs, \
-    extra_link_args = extra_link_args, \
+    include_dirs = ['src'], \
+    extra_link_args = extra_link_args_mod1, \
+    extra_compile_args = extra_compile_args)
+
+rtpjbuf_link_args = extra_link_args.copy()
+if is_mac:
+    rtpjbuf_link_args.extend(['-undefined', 'dynamic_lookup'])
+
+module2 = Extension('rtpsynth.RtpJBuf', sources = rtpjbuf_ext_srcs, \
+    include_dirs = ['src'], \
+    extra_link_args = rtpjbuf_link_args, \
     extra_compile_args = extra_compile_args)
 
 RunCTest.extra_link_args = extra_link_args.copy()
 RunCTest.extra_compile_args = extra_compile_args
 
-if not is_mac and not is_win:
-    extra_link_args.append('-Wl,--version-script=src/Symbol.map')
-
 def get_ex_mod():
     if 'NO_PY_EXT' in os.environ:
         return None
-    return [module1]
+    return [module1, module2]
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
