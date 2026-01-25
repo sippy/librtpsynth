@@ -61,6 +61,30 @@ typedef struct {
     unsigned int capacity;
 } PyRtpJBuf;
 
+typedef struct {
+    unsigned long long rtpinfo_created;
+    unsigned long long rtpinfo_freed;
+    unsigned long long rtppacket_created;
+    unsigned long long rtppacket_freed;
+    unsigned long long ersframe_created;
+    unsigned long long ersframe_freed;
+    unsigned long long rtpframeunion_created;
+    unsigned long long rtpframeunion_freed;
+    unsigned long long rtpframe_created;
+    unsigned long long rtpframe_freed;
+    unsigned long long framewrapper_created;
+    unsigned long long framewrapper_freed;
+    unsigned long long rtpjbuf_created;
+    unsigned long long rtpjbuf_freed;
+} DeallocCounters;
+
+typedef struct {
+    DeallocCounters counters;
+    bool counting_enabled;
+} DeallocCounts;
+
+static DeallocCounts g_counts;
+
 static PyObject *RTPParseError;
 
 static PyTypeObject PyRTPInfoType;
@@ -71,10 +95,26 @@ static PyTypeObject PyRTPFrameType;
 static PyTypeObject PyFrameWrapperType;
 static PyTypeObject PyRtpJBufType;
 
+static void
+count_inc(unsigned long long *counter)
+{
+    if (g_counts.counting_enabled)
+        *counter += 1;
+}
+
 static PyObject *
 py_ulonglong_from_size(size_t v)
 {
     return PyLong_FromUnsignedLongLong((unsigned long long)v);
+}
+
+static PyObject *
+PyRTPInfo_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyObject *obj = PyType_GenericNew(type, args, kwds);
+    if (obj != NULL)
+        count_inc(&g_counts.counters.rtpinfo_created);
+    return obj;
 }
 
 static PyObject *
@@ -83,6 +123,7 @@ PyRTPInfo_FromInfo(const struct rtp_info *info)
     PyRTPInfo *obj = PyObject_New(PyRTPInfo, &PyRTPInfoType);
     if (obj == NULL)
         return NULL;
+    count_inc(&g_counts.counters.rtpinfo_created);
     obj->info = *info;
     return (PyObject *)obj;
 }
@@ -90,6 +131,7 @@ PyRTPInfo_FromInfo(const struct rtp_info *info)
 static void
 PyRTPInfo_dealloc(PyRTPInfo *self)
 {
+    count_inc(&g_counts.counters.rtpinfo_freed);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -162,11 +204,20 @@ static PyTypeObject PyRTPInfoType = {
     .tp_name = MODULE_NAME ".RTPInfo",
     .tp_basicsize = sizeof(PyRTPInfo),
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_new = PyType_GenericNew,
+    .tp_new = PyRTPInfo_new,
     .tp_init = (initproc)PyRTPInfo_init,
     .tp_dealloc = (destructor)PyRTPInfo_dealloc,
     .tp_getset = PyRTPInfo_getset,
 };
+
+static PyObject *
+PyRTPPacket_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyObject *obj = PyType_GenericNew(type, args, kwds);
+    if (obj != NULL)
+        count_inc(&g_counts.counters.rtppacket_created);
+    return obj;
+}
 
 static PyObject *
 PyRTPPacket_NewSteal(const struct rtp_packet *pkt, PyObject *info_obj)
@@ -176,6 +227,7 @@ PyRTPPacket_NewSteal(const struct rtp_packet *pkt, PyObject *info_obj)
         Py_DECREF(info_obj);
         return NULL;
     }
+    count_inc(&g_counts.counters.rtppacket_created);
     obj->pkt = *pkt;
     obj->info_obj = info_obj;
     return (PyObject *)obj;
@@ -184,6 +236,7 @@ PyRTPPacket_NewSteal(const struct rtp_packet *pkt, PyObject *info_obj)
 static void
 PyRTPPacket_dealloc(PyRTPPacket *self)
 {
+    count_inc(&g_counts.counters.rtppacket_freed);
     Py_XDECREF(self->info_obj);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
@@ -235,11 +288,20 @@ static PyTypeObject PyRTPPacketType = {
     .tp_name = MODULE_NAME ".RTPPacket",
     .tp_basicsize = sizeof(PyRTPPacket),
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_new = PyType_GenericNew,
+    .tp_new = PyRTPPacket_new,
     .tp_init = (initproc)PyRTPPacket_init,
     .tp_dealloc = (destructor)PyRTPPacket_dealloc,
     .tp_getset = PyRTPPacket_getset,
 };
+
+static PyObject *
+PyERSFrame_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyObject *obj = PyType_GenericNew(type, args, kwds);
+    if (obj != NULL)
+        count_inc(&g_counts.counters.ersframe_created);
+    return obj;
+}
 
 static PyObject *
 PyERSFrame_FromErs(const struct ers_frame *ers)
@@ -247,6 +309,7 @@ PyERSFrame_FromErs(const struct ers_frame *ers)
     PyERSFrame *obj = PyObject_New(PyERSFrame, &PyERSFrameType);
     if (obj == NULL)
         return NULL;
+    count_inc(&g_counts.counters.ersframe_created);
     obj->ers = *ers;
     return (PyObject *)obj;
 }
@@ -254,6 +317,7 @@ PyERSFrame_FromErs(const struct ers_frame *ers)
 static void
 PyERSFrame_dealloc(PyERSFrame *self)
 {
+    count_inc(&g_counts.counters.ersframe_freed);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -303,11 +367,20 @@ static PyTypeObject PyERSFrameType = {
     .tp_name = MODULE_NAME ".ERSFrame",
     .tp_basicsize = sizeof(PyERSFrame),
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_new = PyType_GenericNew,
+    .tp_new = PyERSFrame_new,
     .tp_init = (initproc)PyERSFrame_init,
     .tp_dealloc = (destructor)PyERSFrame_dealloc,
     .tp_getset = PyERSFrame_getset,
 };
+
+static PyObject *
+PyRTPFrameUnion_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyObject *obj = PyType_GenericNew(type, args, kwds);
+    if (obj != NULL)
+        count_inc(&g_counts.counters.rtpframeunion_created);
+    return obj;
+}
 
 static PyObject *
 PyRTPFrameUnion_NewSteal(PyObject *rtp_obj, PyObject *ers_obj)
@@ -318,6 +391,7 @@ PyRTPFrameUnion_NewSteal(PyObject *rtp_obj, PyObject *ers_obj)
         Py_XDECREF(ers_obj);
         return NULL;
     }
+    count_inc(&g_counts.counters.rtpframeunion_created);
     if (rtp_obj == NULL) {
         rtp_obj = Py_None;
         Py_INCREF(rtp_obj);
@@ -334,6 +408,7 @@ PyRTPFrameUnion_NewSteal(PyObject *rtp_obj, PyObject *ers_obj)
 static void
 PyRTPFrameUnion_dealloc(PyRTPFrameUnion *self)
 {
+    count_inc(&g_counts.counters.rtpframeunion_freed);
     Py_XDECREF(self->rtp);
     Py_XDECREF(self->ers);
     Py_TYPE(self)->tp_free((PyObject *)self);
@@ -367,11 +442,20 @@ static PyTypeObject PyRTPFrameUnionType = {
     .tp_name = MODULE_NAME ".RTPFrameUnion",
     .tp_basicsize = sizeof(PyRTPFrameUnion),
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_new = PyType_GenericNew,
+    .tp_new = PyRTPFrameUnion_new,
     .tp_init = (initproc)PyRTPFrameUnion_init,
     .tp_dealloc = (destructor)PyRTPFrameUnion_dealloc,
     .tp_members = PyRTPFrameUnion_members,
 };
+
+static PyObject *
+PyRTPFrame_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyObject *obj = PyType_GenericNew(type, args, kwds);
+    if (obj != NULL)
+        count_inc(&g_counts.counters.rtpframe_created);
+    return obj;
+}
 
 static PyObject *
 PyRTPFrame_NewSteal(int type, PyObject *frame_union)
@@ -381,6 +465,7 @@ PyRTPFrame_NewSteal(int type, PyObject *frame_union)
         Py_DECREF(frame_union);
         return NULL;
     }
+    count_inc(&g_counts.counters.rtpframe_created);
     obj->type = type;
     obj->frame = frame_union;
     return (PyObject *)obj;
@@ -389,6 +474,7 @@ PyRTPFrame_NewSteal(int type, PyObject *frame_union)
 static void
 PyRTPFrame_dealloc(PyRTPFrame *self)
 {
+    count_inc(&g_counts.counters.rtpframe_freed);
     Py_XDECREF(self->frame);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
@@ -419,11 +505,20 @@ static PyTypeObject PyRTPFrameType = {
     .tp_name = MODULE_NAME ".RTPFrame",
     .tp_basicsize = sizeof(PyRTPFrame),
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_new = PyType_GenericNew,
+    .tp_new = PyRTPFrame_new,
     .tp_init = (initproc)PyRTPFrame_init,
     .tp_dealloc = (destructor)PyRTPFrame_dealloc,
     .tp_members = PyRTPFrame_members,
 };
+
+static PyObject *
+PyFrameWrapper_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyObject *obj = PyType_GenericNew(type, args, kwds);
+    if (obj != NULL)
+        count_inc(&g_counts.counters.framewrapper_created);
+    return obj;
+}
 
 static PyObject *
 PyFrameWrapper_NewSteal(PyObject *content, PyObject *data, PyObject *rtp_data)
@@ -435,6 +530,7 @@ PyFrameWrapper_NewSteal(PyObject *content, PyObject *data, PyObject *rtp_data)
         Py_XDECREF(rtp_data);
         return NULL;
     }
+    count_inc(&g_counts.counters.framewrapper_created);
     if (data == NULL) {
         data = Py_None;
         Py_INCREF(data);
@@ -452,6 +548,7 @@ PyFrameWrapper_NewSteal(PyObject *content, PyObject *data, PyObject *rtp_data)
 static void
 PyFrameWrapper_dealloc(PyFrameWrapper *self)
 {
+    count_inc(&g_counts.counters.framewrapper_freed);
     Py_XDECREF(self->content);
     Py_XDECREF(self->data);
     Py_XDECREF(self->rtp_data);
@@ -514,7 +611,7 @@ static PyTypeObject PyFrameWrapperType = {
     .tp_name = MODULE_NAME ".FrameWrapper",
     .tp_basicsize = sizeof(PyFrameWrapper),
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_new = PyType_GenericNew,
+    .tp_new = PyFrameWrapper_new,
     .tp_init = (initproc)PyFrameWrapper_init,
     .tp_dealloc = (destructor)PyFrameWrapper_dealloc,
     .tp_members = PyFrameWrapper_members,
@@ -783,6 +880,7 @@ PyRtpJBuf_flush(PyRtpJBuf *self, PyObject *args)
 static void
 PyRtpJBuf_dealloc(PyRtpJBuf *self)
 {
+    count_inc(&g_counts.counters.rtpjbuf_freed);
     if (self->jb != NULL) {
         for (;;) {
             struct rjb_udp_in_r ruir = rtpjbuf_flush(self->jb);
@@ -806,6 +904,15 @@ PyRtpJBuf_dealloc(PyRtpJBuf *self)
         self->ptrs = NULL;
     }
     Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+static PyObject *
+PyRtpJBuf_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyObject *obj = PyType_GenericNew(type, args, kwds);
+    if (obj != NULL)
+        count_inc(&g_counts.counters.rtpjbuf_created);
+    return obj;
 }
 
 static int
@@ -851,11 +958,93 @@ static PyTypeObject PyRtpJBufType = {
     .tp_name = MODULE_NAME ".RtpJBuf",
     .tp_basicsize = sizeof(PyRtpJBuf),
     .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_new = PyType_GenericNew,
+    .tp_new = PyRtpJBuf_new,
     .tp_init = (initproc)PyRtpJBuf_init,
     .tp_dealloc = (destructor)PyRtpJBuf_dealloc,
     .tp_methods = PyRtpJBuf_methods,
 };
+
+static int
+add_count(PyObject *dict, const char *name, unsigned long long value)
+{
+    PyObject *obj = PyLong_FromUnsignedLongLong(value);
+    if (obj == NULL)
+        return -1;
+    if (PyDict_SetItemString(dict, name, obj) != 0) {
+        Py_DECREF(obj);
+        return -1;
+    }
+    Py_DECREF(obj);
+    return 0;
+}
+
+static PyObject *
+PyRtpJBuf_get_dealloc_counts(PyObject *self, PyObject *args)
+{
+    PyObject *dict;
+
+    (void)self;
+    if (!PyArg_ParseTuple(args, ":_get_dealloc_counts"))
+        return NULL;
+
+    dict = PyDict_New();
+    if (dict == NULL)
+        return NULL;
+
+    if (add_count(dict, "RTPInfo_created", g_counts.counters.rtpinfo_created) != 0 ||
+        add_count(dict, "RTPInfo_freed", g_counts.counters.rtpinfo_freed) != 0 ||
+        add_count(dict, "RTPPacket_created", g_counts.counters.rtppacket_created) != 0 ||
+        add_count(dict, "RTPPacket_freed", g_counts.counters.rtppacket_freed) != 0 ||
+        add_count(dict, "ERSFrame_created", g_counts.counters.ersframe_created) != 0 ||
+        add_count(dict, "ERSFrame_freed", g_counts.counters.ersframe_freed) != 0 ||
+        add_count(dict, "RTPFrameUnion_created", g_counts.counters.rtpframeunion_created) != 0 ||
+        add_count(dict, "RTPFrameUnion_freed", g_counts.counters.rtpframeunion_freed) != 0 ||
+        add_count(dict, "RTPFrame_created", g_counts.counters.rtpframe_created) != 0 ||
+        add_count(dict, "RTPFrame_freed", g_counts.counters.rtpframe_freed) != 0 ||
+        add_count(dict, "FrameWrapper_created", g_counts.counters.framewrapper_created) != 0 ||
+        add_count(dict, "FrameWrapper_freed", g_counts.counters.framewrapper_freed) != 0 ||
+        add_count(dict, "RtpJBuf_created", g_counts.counters.rtpjbuf_created) != 0 ||
+        add_count(dict, "RtpJBuf_freed", g_counts.counters.rtpjbuf_freed) != 0) {
+        Py_DECREF(dict);
+        return NULL;
+    }
+    return dict;
+}
+
+static PyObject *
+PyRtpJBuf_reset_dealloc_counts(PyObject *self, PyObject *args)
+{
+    (void)self;
+    if (!PyArg_ParseTuple(args, ":_reset_dealloc_counts"))
+        return NULL;
+    memset(&g_counts.counters, 0, sizeof(g_counts.counters));
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+PyRtpJBuf_set_dealloc_counting(PyObject *self, PyObject *args)
+{
+    PyObject *flag = NULL;
+    int enabled = 0;
+
+    (void)self;
+    if (!PyArg_ParseTuple(args, "O:_set_dealloc_counting", &flag))
+        return NULL;
+    enabled = PyObject_IsTrue(flag);
+    if (enabled < 0)
+        return NULL;
+    g_counts.counting_enabled = enabled != 0;
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+PyRtpJBuf_get_dealloc_counting(PyObject *self, PyObject *args)
+{
+    (void)self;
+    if (!PyArg_ParseTuple(args, ":_get_dealloc_counting"))
+        return NULL;
+    return PyBool_FromLong(g_counts.counting_enabled ? 1 : 0);
+}
 
 static PyObject *
 make_frame_type(void)
@@ -916,11 +1105,20 @@ error:
     return NULL;
 }
 
+static PyMethodDef RtpJBuf_module_methods[] = {
+    {"_get_dealloc_counts", (PyCFunction)PyRtpJBuf_get_dealloc_counts, METH_VARARGS, NULL},
+    {"_reset_dealloc_counts", (PyCFunction)PyRtpJBuf_reset_dealloc_counts, METH_VARARGS, NULL},
+    {"_set_dealloc_counting", (PyCFunction)PyRtpJBuf_set_dealloc_counting, METH_VARARGS, NULL},
+    {"_get_dealloc_counting", (PyCFunction)PyRtpJBuf_get_dealloc_counting, METH_VARARGS, NULL},
+    {NULL}
+};
+
 static struct PyModuleDef RtpJBuf_module = {
     PyModuleDef_HEAD_INIT,
     .m_name = MODULE_NAME,
     .m_doc = "Python interface to the RTP jitter buffer.",
     .m_size = -1,
+    .m_methods = RtpJBuf_module_methods,
 };
 
 PyMODINIT_FUNC
