@@ -59,6 +59,7 @@ typedef struct {
     PyObject **refs;
     const unsigned char **ptrs;
     unsigned int capacity;
+    uint64_t dropped;
 } PyRtpJBuf;
 
 typedef struct {
@@ -783,6 +784,7 @@ process_drop_list(PyRtpJBuf *self, struct rtp_frame *fp, PyObject *input_bytes,
     while (fp != NULL) {
         struct rtp_frame *next = fp->next;
         if (fp->type == RFT_RTP) {
+            self->dropped += 1;
             PyObject *data_obj = fetch_data_ref(self, fp->rtp.data, input_bytes, input_ptr);
             Py_XDECREF(data_obj);
             rtpjbuf_frame_dtor(fp);
@@ -928,6 +930,7 @@ PyRtpJBuf_init(PyRtpJBuf *self, PyObject *args, PyObject *kwds)
         return -1;
     }
     self->capacity = capacity;
+    self->dropped = 0;
     self->refs = PyMem_Calloc(capacity, sizeof(*self->refs));
     self->ptrs = PyMem_Calloc(capacity, sizeof(*self->ptrs));
     if (self->refs == NULL || self->ptrs == NULL) {
@@ -953,6 +956,11 @@ static PyMethodDef PyRtpJBuf_methods[] = {
     {NULL}
 };
 
+static PyMemberDef PyRtpJBuf_members[] = {
+    {"dropped", T_ULONGLONG, offsetof(PyRtpJBuf, dropped), READONLY, NULL},
+    {NULL}
+};
+
 static PyTypeObject PyRtpJBufType = {
     PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name = MODULE_NAME ".RtpJBuf",
@@ -962,6 +970,7 @@ static PyTypeObject PyRtpJBufType = {
     .tp_init = (initproc)PyRtpJBuf_init,
     .tp_dealloc = (destructor)PyRtpJBuf_dealloc,
     .tp_methods = PyRtpJBuf_methods,
+    .tp_members = PyRtpJBuf_members,
 };
 
 static int
