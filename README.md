@@ -6,8 +6,8 @@ packets. Based on some code and ideas from the RTPProxy projects.
 Originally designed to supplement Python code to do low-level bits shuffling
 for the proof of concept IoT implementation.
 
-Reasonably fast, 500-700x real-time (i.e. 0.5-1M packets per second) when
-used from the Python code. 20x of that (10-20M PPS) if used from C code
+Reasonably fast, 2,000-4,000x real-time (i.e. 2-4M packets per second) when
+used from the Python code. 5x of that (10-20M PPS) if used from C code
 directly.
 
 ## RTP Generation
@@ -57,6 +57,8 @@ Simple RTP parser and validator to process incoming UDP datagrams,
 parse & validate RTP headers. Resulting RTP stream is passed through
 fixed-size jitter buffer to de-duplicate and re-order packets if
 needed.
+
+Silence (erasure) frames are emitted to indicate voids.
 
 ### rtpjbuf (c)
 
