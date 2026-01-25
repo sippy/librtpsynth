@@ -33,6 +33,7 @@
 #pragma comment(linker, "/export:rsynth_dtor")
 #pragma comment(linker, "/export:rsynth_set_mbt")
 #pragma comment(linker, "/export:rsynth_resync")
+#pragma comment(linker, "/export:rsynth_set_randfunc")
 #endif
 
 #define _DEFAULT_SOURCE
@@ -63,6 +64,16 @@ random(void)
 #include "rtp.h"
 #include "rtpsynth.h"
 #include "rsth_timeops.h"
+
+static uint32_t
+rsynth_default_randfunc(void *arg)
+{
+    (void)arg;
+    return (uint32_t)random();
+}
+
+static rsynth_randfunc_t rsynth_randfunc = rsynth_default_randfunc;
+static void *rsynth_randfunc_arg = NULL;
 
 struct rsynth_inst {
     int srate;
@@ -104,6 +115,7 @@ void *
 rsynth_ctor(int srate, int ptime)
 {
     struct rsynth_inst *rip;
+    uint32_t rand_val;
 
     rip = malloc(sizeof(struct rsynth_inst));
     if (rip == NULL)
@@ -114,9 +126,12 @@ rsynth_ctor(int srate, int ptime)
     rip->ts_inc = 80 * ptime / 10;
     rip->model.version = 2;
     rip->model.mbt = 1;
-    rip->model.ssrc = random();
-    rip->l.ts = random() & 0xfffffffe;
-    rip->l.seq = random() & 0xffff;
+    rand_val = rsynth_randfunc(rsynth_randfunc_arg);
+    rip->model.ssrc = rand_val;
+    rand_val = rsynth_randfunc(rsynth_randfunc_arg);
+    rip->l.ts = rand_val & 0xfffffffe;
+    rand_val = rsynth_randfunc(rsynth_randfunc_arg);
+    rip->l.seq = rand_val & 0xffff;
     (void)clock_gettime(CLOCK_MONOTONIC, &rip->last_ts);
     return ((void *)rip);
 }
@@ -223,4 +238,16 @@ rsynth_dtor(void *_rip)
 
     rip = (struct rsynth_inst *)_rip;
     free(rip);
+}
+
+void
+rsynth_set_randfunc(rsynth_randfunc_t func, void *arg)
+{
+    if (func == NULL) {
+        rsynth_randfunc = rsynth_default_randfunc;
+        rsynth_randfunc_arg = NULL;
+        return;
+    }
+    rsynth_randfunc = func;
+    rsynth_randfunc_arg = arg;
 }

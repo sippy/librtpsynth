@@ -27,6 +27,7 @@ from time import monotonic
 from random import Random
 
 import rtpsynth.RtpJBuf as RtpJBuf_mod
+import rtpsynth.RtpSynth as RtpSynth_mod
 from rtpsynth.RtpSynth import RtpSynth
 from rtpsynth.RtpJBuf import RtpJBuf, RTPFrameType
 
@@ -104,9 +105,11 @@ def run_case(test_case, test_data, ts_step, verbose=False):
     last_rtp_lseq = None
     last_tag = None
     pending_gap = 0
+    tsnorm = None
 
     def process_res(res):
         nonlocal ers_cnt, rtp_cnt, last_rtp_ts, last_rtp_lseq, ts_step, last_tag, pending_gap
+        nonlocal tsnorm
         ers_frames = (x for x in res if x.content.type == RTPFrameType.ERS)
         corruption_off = test_case.corrupt_rate == 0.0
         if corruption_off:
@@ -126,7 +129,12 @@ def run_case(test_case, test_data, ts_step, verbose=False):
                 union = frame.frame
                 pkt = union.rtp
                 info = pkt.info
-                ts = info.ts
+                if tsnorm is None:
+                    tsnorm = -info.ts
+                ts = tsnorm + info.ts
+                if last_rtp_ts is not None and last_rtp_ts > ts and info.ts < 4096:
+                    tsnorm += int(2 ** 32)
+                    ts += int(2 ** 32)
                 lseq = pkt.lseq
                 data = item.data
                 rtp_data = item.rtp_data
@@ -152,7 +160,7 @@ def run_case(test_case, test_data, ts_step, verbose=False):
                     diff_lseq = lseq - last_rtp_lseq
                     diff_ts = ts - last_rtp_ts
                     if diff_ts <= 0 and corruption_off:
-                        raise AssertionError("ts not increasing")
+                        raise AssertionError(f"ts not increasing {diff_ts=} {last_rtp_ts=}")
                     if diff_ts != ts_step * diff_lseq and corruption_off:
                         raise AssertionError("ts gap mismatch")
                 last_rtp_ts = ts
@@ -215,6 +223,8 @@ class TestJBuf(unittest.TestCase):
     def setUpClass(cls):
         iterations = max(tc.iterations for tc in known_cnts)
         rng = Random(42)
+        rs_rng = Random(4242)
+        RtpSynth_mod.set_randfunc(rs_rng.getrandbits)
         i = 0
         srate = 8000
         ptime = 30
@@ -239,6 +249,10 @@ class TestJBuf(unittest.TestCase):
             del rs
 
         cls.test_data = test_data
+
+    @classmethod
+    def tearDownClass(cls):
+        RtpSynth_mod.set_randfunc(None)
 
     def _run_case(
         self,

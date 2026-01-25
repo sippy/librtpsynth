@@ -19,6 +19,49 @@ typedef struct {
     void *rs;
 } PyRtpSynth;
 
+static PyObject *g_randfunc = NULL;
+
+static uint32_t
+PyRtpSynth_randfunc(void *arg)
+{
+    PyGILState_STATE gstate;
+    PyObject *callable;
+    PyObject *res = NULL;
+    PyObject *arg32 = NULL;
+    uint32_t value = 0;
+    (void)arg;
+
+    gstate = PyGILState_Ensure();
+    callable = g_randfunc;
+    if (callable == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "randfunc not set");
+        PyGILState_Release(gstate);
+        return 0;
+    }
+
+    res = PyObject_CallFunctionObjArgs(callable, NULL);
+    if (res == NULL) {
+        if (PyErr_ExceptionMatches(PyExc_TypeError)) {
+            PyErr_Clear();
+            arg32 = PyLong_FromLong(32);
+            if (arg32 != NULL)
+                res = PyObject_CallFunctionObjArgs(callable, arg32, NULL);
+        }
+    }
+    Py_XDECREF(arg32);
+    if (res != NULL) {
+        unsigned long long tmp = PyLong_AsUnsignedLongLong(res);
+        if (!PyErr_Occurred())
+            value = (uint32_t)tmp;
+        Py_DECREF(res);
+    } else {
+        PyErr_Clear();
+        PyErr_SetString(PyExc_RuntimeError, "randfunc failed");
+    }
+    PyGILState_Release(gstate);
+    return value;
+}
+
 static void
 PyRtpSynth_dealloc(PyRtpSynth *self)
 {
@@ -221,6 +264,34 @@ PyRtpSynth_skip(PyRtpSynth *self, PyObject *args)
     Py_RETURN_NONE;
 }
 
+static PyObject *
+PyRtpSynth_set_randfunc(PyObject *self, PyObject *args)
+{
+    PyObject *callable = NULL;
+
+    if (!PyArg_ParseTuple(args, "O:set_randfunc", &callable))
+        return NULL;
+    (void)self;
+
+    if (callable == Py_None) {
+        Py_XDECREF(g_randfunc);
+        g_randfunc = NULL;
+        rsynth_set_randfunc(NULL, NULL);
+        Py_RETURN_NONE;
+    }
+
+    if (!PyCallable_Check(callable)) {
+        PyErr_SetString(PyExc_TypeError, "set_randfunc expects a callable or None");
+        return NULL;
+    }
+
+    Py_INCREF(callable);
+    Py_XDECREF(g_randfunc);
+    g_randfunc = callable;
+    rsynth_set_randfunc(PyRtpSynth_randfunc, NULL);
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef PyRtpSynth_methods[] = {
     {"next_pkt", (PyCFunction)PyRtpSynth_next_pkt, METH_VARARGS | METH_KEYWORDS, NULL},
     {"pkt_free", (PyCFunction)PyRtpSynth_pkt_free, METH_VARARGS, NULL},
@@ -242,11 +313,17 @@ static PyTypeObject PyRtpSynthType = {
     .tp_methods = PyRtpSynth_methods,
 };
 
+static PyMethodDef RtpSynth_module_methods[] = {
+    {"set_randfunc", (PyCFunction)PyRtpSynth_set_randfunc, METH_VARARGS, NULL},
+    {NULL}
+};
+
 static struct PyModuleDef RtpSynth_module = {
     PyModuleDef_HEAD_INIT,
     .m_name = MODULE_NAME,
     .m_doc = "Python interface to RTP packet generator.",
     .m_size = -1,
+    .m_methods = RtpSynth_module_methods,
 };
 
 PyMODINIT_FUNC

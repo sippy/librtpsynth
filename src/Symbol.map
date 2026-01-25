@@ -13,6 +13,10 @@ LIBRTPSYNTH_84ab5b9fdc94 {
             rtpjbuf_flush;
 } LIBRTPSYNTH_72f7eab9e3e6;
 
-LIBRTPSYNTH_000000000000 {
+LIBRTPSYNTH_f57a9b22cc3c {
     global: rsynth_skip;
 } LIBRTPSYNTH_84ab5b9fdc94;
+
+LIBRTPSYNTH_b0f6a63f2f3a {
+    global: rsynth_set_randfunc;
+} LIBRTPSYNTH_a99ed438304e;

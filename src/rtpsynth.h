@@ -27,6 +27,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #if !defined(_WIN32) && !defined(_WIN64)
 #define EXPORT
 #else
@@ -38,6 +40,8 @@ struct rsynth_seq {
     unsigned long long seq;
 };
 
+typedef uint32_t (*rsynth_randfunc_t)(void *arg);
+
 void *rsynth_ctor(int srate, int ptime);
 void *rsynth_next_pkt(void *ri, int plen, int pt);
 int rsynth_next_pkt_pa(void *ri, int plen, int pt, char *buf, unsigned int blen, int pa);
@@ -46,3 +50,4 @@ void rsynth_pkt_free(void *rnp);
 void rsynth_dtor(void *ri);
 unsigned int rsynth_set_mbt(void *ri, unsigned int new_st);
 void rsynth_resync(void *ri, struct rsynth_seq *rsp);
+void rsynth_set_randfunc(rsynth_randfunc_t func, void *arg);
