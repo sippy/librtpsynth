@@ -21,11 +21,12 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import unittest
+from time import monotonic
+from random import shuffle, seed, random
+
 from rtpsynth.RtpSynth import RtpSynth
 from rtpsynth.RtpJBuf import RtpJBuf, RTPFrameType
-
-from random import shuffle, seed, random
-from time import monotonic
 
 seed(42)
 
@@ -46,52 +47,61 @@ known_cnts = [
     TestCase(1000000, 10, 185812, 814188),
 ]
 
-def run_test(test_case, verbose = False):
-    iterations = test_case.iterations
-    i = 0
-    rs = RtpSynth(8000, 30)
-    rb = RtpJBuf(test_case.jbsize)
-    robuf = []
-    iterations = 1000000
-    ers_cnt = rtp_cnt = 0
-    test_data = []
-    print('Generating test data...')
-    while i < iterations:
-        rp = rs.next_pkt(170, 0)
-        robuf.append(rp)
-        if len(robuf) > int(200 * random()) or i == iterations - 1:
-            shuffle(robuf)
-            #print(len(robuf))
-            robuf.extend(robuf[:int(len(robuf)/10)])
-            shuffle(robuf)
-            test_data.extend(robuf)
-            robuf = []
-        i += 1
-    print('Testing...')
-    btime = monotonic()
-    for i, pkt in enumerate(test_data):
-        res = rb.udp_in(pkt)
-        if i == len(test_data) - 1:
-            fres = rb.flush()
-            #print(f'len(fres) = {len(fres)}')
-            res.extend(fres)
-        if len(res) == 0:
-            continue
-        ers_cnt_add = sum([x.content.lseq_end - x.content.lseq_start + 1 for x in res if x.content.type == RTPFrameType.ERS])
-        rtp_cnt += sum([1 for x in res if x.content.type == RTPFrameType.RTP])
-        if verbose:
-            print(res)
-        assert ers_cnt_add < 200
-        ers_cnt += ers_cnt_add
-    etime = monotonic()
-    mpps = (rtp_cnt + ers_cnt) / max(etime - btime, 1e-9) / 1e6
+class TestJBuf(unittest.TestCase):
+    def _run_case(self, test_case, verbose=False):
+        iterations = test_case.iterations
+        i = 0
+        rs = RtpSynth(8000, 30)
+        rb = RtpJBuf(test_case.jbsize)
+        robuf = []
+        iterations = 1000000
+        ers_cnt = rtp_cnt = 0
+        test_data = []
+        try:
+            print('Generating test data...')
+            while i < iterations:
+                rp = rs.next_pkt(170, 0)
+                robuf.append(rp)
+                if len(robuf) > int(200 * random()) or i == iterations - 1:
+                    shuffle(robuf)
+                    #print(len(robuf))
+                    robuf.extend(robuf[:int(len(robuf)/10)])
+                    shuffle(robuf)
+                    test_data.extend(robuf)
+                    robuf = []
+                i += 1
+            print('Testing...')
+            btime = monotonic()
+            for i, pkt in enumerate(test_data):
+                res = rb.udp_in(pkt)
+                if i == len(test_data) - 1:
+                    fres = rb.flush()
+                    #print(f'len(fres) = {len(fres)}')
+                    res.extend(fres)
+                if len(res) == 0:
+                    continue
+                ers_cnt_add = sum([x.content.lseq_end - x.content.lseq_start + 1 for x in res if x.content.type == RTPFrameType.ERS])
+                rtp_cnt += sum([1 for x in res if x.content.type == RTPFrameType.RTP])
+                if verbose:
+                    print(res)
+                self.assertLess(ers_cnt_add, 200)
+                ers_cnt += ers_cnt_add
+            etime = monotonic()
+        finally:
+            del rs
+        mpps = (rtp_cnt + ers_cnt) / max(etime - btime, 1e-9) / 1e6
 
-    del rs
-    print(f'ers_cnt: {ers_cnt}')
-    print(f'rtp_cnt: {rtp_cnt}')
-    print(f'---\nConsumed {rtp_cnt + ers_cnt}, time={etime - btime}, mpps={mpps:.2f}')
-    assert test_case.ers_cnt == ers_cnt and test_case.rtp_cnt == rtp_cnt
+        print(f'ers_cnt: {ers_cnt}')
+        print(f'rtp_cnt: {rtp_cnt}')
+        print(f'---\nConsumed {rtp_cnt + ers_cnt}, time={etime - btime}, mpps={mpps:.2f}')
+        self.assertEqual(test_case.ers_cnt, ers_cnt)
+        self.assertEqual(test_case.rtp_cnt, rtp_cnt)
+
+    def test_jbuf_counts(self):
+        for test_case in known_cnts:
+            with self.subTest(jbsize=test_case.jbsize):
+                self._run_case(test_case)
+
 
 if __name__ == '__main__':
-    for test_case in known_cnts:
-        run_test(test_case)
+    unittest.main()
