@@ -62,6 +62,34 @@ d_assert(int invar)
         abort();
 }
 
+static struct rtp_frame *
+purge_stale_tail(struct rtpjbuf_inst *rjbp)
+{
+    struct rtp_frame *prev = NULL;
+    struct rtp_frame *fp = rjbp->jb.head;
+
+    if (fp == NULL || rjbp->jb.size < rjbp->jb.capacity - 1)
+        return NULL;
+
+    while (fp->next != NULL) {
+        prev = fp;
+        fp = fp->next;
+    }
+    fp->rtp.jbcnt += 1;
+    if (fp->rtp.jbcnt < rjbp->jb.capacity)
+        return NULL;
+
+    if (prev != NULL)
+        prev->next = NULL;
+    else
+        rjbp->jb.head = NULL;
+    rjbp->jb.size -= 1;
+    if (rjbp->last_max_lseq == fp->rtp.lseq)
+        rjbp->last_max_lseq = (prev != NULL) ? prev->rtp.lseq : LMS_DEFAULT;
+    fp->next = NULL;
+    return fp;
+}
+
 void *
 rtpjbuf_ctor(unsigned int capacity)
 {
@@ -138,6 +166,7 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
     struct rjb_udp_in_r ruir = { 0 };
 
     rjbp = (struct rtpjbuf_inst *)_rjbp;
+    ruir.drop = purge_stale_tail(rjbp);
     fp = malloc(sizeof(struct rtp_frame));
     if x_unlikely(fp == NULL) {
         ruir.error = RJB_ENOMEM;
@@ -153,6 +182,7 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
     }
     fp->type = RFT_RTP;
     fp->rtp.data = data;
+    fp->rtp.jbcnt = 0;
 
     /* Check for SEQ wrap-out and convert SEQ to the logical SEQ */
     fp->rtp.lseq = rjbp->lseq_mask | fp->rtp.info.seq;
@@ -180,6 +210,7 @@ rtpjbuf_udp_in(void *_rjbp, const unsigned char *data, size_t size)
         if (ldist == 0)
             goto gotdup;
         rjbp->jbs.drop.late += 1;
+        fp->next = ruir.drop;
         ruir.drop = fp;
         return (ruir);
     }
@@ -251,6 +282,7 @@ lms_init:
     return (ruir);
 gotdup:
     rjbp->jbs.drop.dup += 1;
+    fp->next = ruir.drop;
     ruir.drop = fp;
     return (ruir);
 }

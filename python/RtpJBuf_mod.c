@@ -834,6 +834,9 @@ PyRtpJBuf_udp_in(PyRtpJBuf *self, PyObject *args)
 
     ruir = rtpjbuf_udp_in(self->jb, data, (size_t)size);
     if (ruir.error != 0) {
+        if (ruir.drop != NULL) {
+            process_drop_list(self, ruir.drop, input_bytes, data);
+        }
         Py_DECREF(input_bytes);
         if (ruir.error < RTP_PARSER_OK) {
             PyErr_Format(RTPParseError, "rtpjbuf_udp_in(): error %d", ruir.error);

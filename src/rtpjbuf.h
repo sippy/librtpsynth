@@ -5,6 +5,7 @@ enum rtp_frame_type { RFT_RTP = 0, RFT_ERS = 1};
 struct rtp_packet {
     struct rtp_info info;
     uint64_t lseq;
+    uint64_t jbcnt;
     const unsigned char *data;
 };
 
