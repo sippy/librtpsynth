@@ -297,7 +297,7 @@ rtpjbuf_flush(void *_rjbp)
 
     if (rjbp->jb.head == NULL)
         return (ruir);
-    d_assert(rjbp->jb.head->rtp.lseq - 1 > rjbp->last_lseq);
+    d_assert(rjbp->jb.head->rtp.lseq - 1 > rjbp->last_lseq || rjbp->last_lseq == LRS_DEFAULT);
     fp = rjbp->jb.head;
     for (ifp = fp; ifp->next != NULL; ifp = ifp->next) {
 resume:
