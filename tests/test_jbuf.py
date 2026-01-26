@@ -324,6 +324,23 @@ class TestJBuf(unittest.TestCase):
             rb.udp_in(b"\x80")
         del rb
 
+    def test_jbuf_opaque(self):
+        rb = RtpJBuf(20)
+        rs = RtpSynth(8000, 30)
+        marker = {"opaque": 123}
+        rs.resync(0, 0)
+        rtp_items = []
+        for i in range(64):
+            pkt = rs.next_pkt(170, 0, make_payload(i, 170))
+            res = rb.udp_in(pkt, marker)
+            rtp_items = [item for item in res if item.content.type == RTPFrameType.RTP]
+            if rtp_items:
+                break
+        self.assertGreater(len(rtp_items), 0)
+        self.assertTrue(any(item.opaque is marker for item in rtp_items))
+        del rs
+        del rb
+
     def test_jbuf_corrupt_packets(self):
         test_case = TestCase(
             1000000,

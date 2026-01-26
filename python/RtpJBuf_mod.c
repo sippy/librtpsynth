@@ -51,13 +51,19 @@ typedef struct {
     PyObject *content;
     PyObject *data;
     PyObject *rtp_data;
+    PyObject *opaque;
 } PyFrameWrapper;
+
+typedef struct {
+    PyObject *data;
+    PyObject *opaque;
+    const unsigned char *ptr;
+} PyRtpJBufRef;
 
 typedef struct {
     PyObject_HEAD
     void *jb;
-    PyObject **refs;
-    const unsigned char **ptrs;
+    PyRtpJBufRef *refs;
     unsigned int capacity;
     uint64_t dropped;
 } PyRtpJBuf;
@@ -522,13 +528,15 @@ PyFrameWrapper_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 }
 
 static PyObject *
-PyFrameWrapper_NewSteal(PyObject *content, PyObject *data, PyObject *rtp_data)
+PyFrameWrapper_NewSteal(PyObject *content, PyObject *data, PyObject *rtp_data,
+    PyObject *opaque)
 {
     PyFrameWrapper *obj = PyObject_New(PyFrameWrapper, &PyFrameWrapperType);
     if (obj == NULL) {
         Py_DECREF(content);
         Py_XDECREF(data);
         Py_XDECREF(rtp_data);
+        Py_XDECREF(opaque);
         return NULL;
     }
     count_inc(&g_counts.counters.framewrapper_created);
@@ -540,9 +548,14 @@ PyFrameWrapper_NewSteal(PyObject *content, PyObject *data, PyObject *rtp_data)
         rtp_data = Py_None;
         Py_INCREF(rtp_data);
     }
+    if (opaque == NULL) {
+        opaque = Py_None;
+        Py_INCREF(opaque);
+    }
     obj->content = content;
     obj->data = data;
     obj->rtp_data = rtp_data;
+    obj->opaque = opaque;
     return (PyObject *)obj;
 }
 
@@ -553,6 +566,7 @@ PyFrameWrapper_dealloc(PyFrameWrapper *self)
     Py_XDECREF(self->content);
     Py_XDECREF(self->data);
     Py_XDECREF(self->rtp_data);
+    Py_XDECREF(self->opaque);
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
 
@@ -567,9 +581,12 @@ PyFrameWrapper_init(PyFrameWrapper *self, PyObject *args, PyObject *kwds)
     Py_XDECREF(self->content);
     Py_XDECREF(self->data);
     Py_XDECREF(self->rtp_data);
+    Py_XDECREF(self->opaque);
     self->content = Py_None;
     self->data = Py_None;
     self->rtp_data = Py_None;
+    self->opaque = Py_None;
+    Py_INCREF(Py_None);
     Py_INCREF(Py_None);
     Py_INCREF(Py_None);
     Py_INCREF(Py_None);
@@ -604,6 +621,7 @@ static PyMemberDef PyFrameWrapper_members[] = {
     {"content", T_OBJECT_EX, offsetof(PyFrameWrapper, content), READONLY, NULL},
     {"data", T_OBJECT_EX, offsetof(PyFrameWrapper, data), READONLY, NULL},
     {"rtp_data", T_OBJECT_EX, offsetof(PyFrameWrapper, rtp_data), READONLY, NULL},
+    {"opaque", T_OBJECT_EX, offsetof(PyFrameWrapper, opaque), READONLY, NULL},
     {NULL}
 };
 
@@ -621,7 +639,7 @@ static PyTypeObject PyFrameWrapperType = {
 };
 
 static PyObject *
-build_wrapper_rtp(struct rtp_frame *fp, PyObject *data_obj)
+build_wrapper_rtp(struct rtp_frame *fp, PyObject *data_obj, PyObject *opaque_obj)
 {
     PyObject *info_obj = PyRTPInfo_FromInfo(&fp->rtp.info);
     PyObject *pkt_obj = NULL;
@@ -634,24 +652,28 @@ build_wrapper_rtp(struct rtp_frame *fp, PyObject *data_obj)
 
     if (info_obj == NULL) {
         Py_DECREF(data_obj);
+        Py_XDECREF(opaque_obj);
         return NULL;
     }
     pkt_obj = PyRTPPacket_NewSteal(&fp->rtp, info_obj);
     info_obj = NULL;
     if (pkt_obj == NULL) {
         Py_DECREF(data_obj);
+        Py_XDECREF(opaque_obj);
         return NULL;
     }
     union_obj = PyRTPFrameUnion_NewSteal(pkt_obj, NULL);
     pkt_obj = NULL;
     if (union_obj == NULL) {
         Py_DECREF(data_obj);
+        Py_XDECREF(opaque_obj);
         return NULL;
     }
     frame_obj = PyRTPFrame_NewSteal(RFT_RTP, union_obj);
     union_obj = NULL;
     if (frame_obj == NULL) {
         Py_DECREF(data_obj);
+        Py_XDECREF(opaque_obj);
         return NULL;
     }
     if (payload_size > 0) {
@@ -661,9 +683,10 @@ build_wrapper_rtp(struct rtp_frame *fp, PyObject *data_obj)
     if (rtp_data == NULL) {
         Py_DECREF(frame_obj);
         Py_DECREF(data_obj);
+        Py_XDECREF(opaque_obj);
         return NULL;
     }
-    wrapper = PyFrameWrapper_NewSteal(frame_obj, data_obj, rtp_data);
+    wrapper = PyFrameWrapper_NewSteal(frame_obj, data_obj, rtp_data, opaque_obj);
     if (wrapper == NULL)
         return NULL;
     return wrapper;
@@ -675,45 +698,66 @@ build_wrapper_ers(struct rtp_frame *fp)
     PyObject *ers_obj = PyERSFrame_FromErs(&fp->ers);
     if (ers_obj == NULL)
         return NULL;
-    return PyFrameWrapper_NewSteal(ers_obj, NULL, NULL);
+    return PyFrameWrapper_NewSteal(ers_obj, NULL, NULL, NULL);
 }
 
-static PyObject *
-fetch_data_ref(PyRtpJBuf *self, const unsigned char *ptr, PyObject *input_bytes,
-    const unsigned char *input_ptr)
+static PyRtpJBufRef *
+fetch_cached_ref(PyRtpJBuf *self, const unsigned char *ptr, PyRtpJBufRef *out)
 {
     assert(self->refs != NULL);
-    assert(self->ptrs != NULL);
     assert(ptr != NULL);
-    assert(input_ptr != NULL);
-    assert(input_bytes != NULL);
-    if (ptr == input_ptr) {
-        Py_INCREF(input_bytes);
-        return input_bytes;
-    }
+    assert(out != NULL);
     for (unsigned int i = 0; i < self->capacity; i++) {
-        if (self->ptrs[i] == ptr) {
-            PyObject *obj = self->refs[i];
-            self->refs[i] = NULL;
-            self->ptrs[i] = NULL;
-            return obj;
+        if (self->refs[i].ptr == ptr) {
+            out->data = self->refs[i].data;
+            out->opaque = self->refs[i].opaque;
+            out->ptr = self->refs[i].ptr;
+            self->refs[i].data = NULL;
+            self->refs[i].opaque = NULL;
+            self->refs[i].ptr = NULL;
+            return out;
         }
     }
     Py_INCREF(Py_None);
-    return Py_None;
+    Py_INCREF(Py_None);
+    out->data = Py_None;
+    out->opaque = Py_None;
+    out->ptr = NULL;
+    return out;
+}
+
+static PyRtpJBufRef *
+fetch_ready_ref(PyRtpJBuf *self, const unsigned char *ptr, PyObject *input_bytes,
+    PyObject *input_opaque, const unsigned char *input_ptr, PyRtpJBufRef *out)
+{
+    assert(input_bytes != NULL);
+    assert(input_opaque != NULL);
+    assert(input_ptr != NULL);
+    if (ptr == input_ptr) {
+        Py_INCREF(input_bytes);
+        Py_INCREF(input_opaque);
+        out->data = input_bytes;
+        out->opaque = input_opaque;
+        out->ptr = ptr;
+        return out;
+    }
+    return fetch_cached_ref(self, ptr, out);
 }
 
 static int
-store_data_ref(PyRtpJBuf *self, PyObject *input_bytes, const unsigned char *ptr)
+store_data_ref(PyRtpJBuf *self, PyObject *input_bytes, PyObject *input_opaque,
+    const unsigned char *ptr)
 {
     assert(self->refs != NULL);
-    assert(self->ptrs != NULL);
     assert(ptr != NULL);
+    assert(input_opaque != NULL);
     for (unsigned int i = 0; i < self->capacity; i++) {
-        if (self->refs[i] == NULL) {
+        if (self->refs[i].data == NULL) {
             Py_INCREF(input_bytes);
-            self->refs[i] = input_bytes;
-            self->ptrs[i] = ptr;
+            self->refs[i].data = input_bytes;
+            Py_INCREF(input_opaque);
+            self->refs[i].opaque = input_opaque;
+            self->refs[i].ptr = ptr;
             return 0;
         }
     }
@@ -733,12 +777,12 @@ list_has_data_ptr(struct rtp_frame *fp, const unsigned char *ptr)
 }
 
 static void
-process_drop_list(PyRtpJBuf *self, struct rtp_frame *fp, PyObject *input_bytes,
+process_drop_list(PyRtpJBuf *self, struct rtp_frame *fp,
     const unsigned char *input_ptr);
 
 static PyObject *
 process_ready_list(PyRtpJBuf *self, struct rtp_frame *fp, PyObject *input_bytes,
-    const unsigned char *input_ptr)
+    PyObject *input_opaque, const unsigned char *input_ptr)
 {
     PyObject *ready_list = PyList_New(0);
     if (ready_list == NULL)
@@ -749,25 +793,23 @@ process_ready_list(PyRtpJBuf *self, struct rtp_frame *fp, PyObject *input_bytes,
         PyObject *wrapper = NULL;
 
         if (fp->type == RFT_RTP) {
-            PyObject *data_obj = fetch_data_ref(self, fp->rtp.data, input_bytes, input_ptr);
-            if (data_obj == NULL) {
-                Py_DECREF(ready_list);
-                return NULL;
-            }
-            wrapper = build_wrapper_rtp(fp, data_obj);
+            PyRtpJBufRef ref;
+            PyRtpJBufRef *refp = fetch_ready_ref(self, fp->rtp.data, input_bytes,
+                input_opaque, input_ptr, &ref);
+            wrapper = build_wrapper_rtp(fp, refp->data, refp->opaque);
             rtpjbuf_frame_dtor(fp);
         } else {
             wrapper = build_wrapper_ers(fp);
         }
 
         if (wrapper == NULL) {
-            process_drop_list(self, next, input_bytes, input_ptr);
+            process_drop_list(self, next, input_ptr);
             Py_DECREF(ready_list);
             return NULL;
         }
         if (PyList_Append(ready_list, wrapper) != 0) {
             Py_DECREF(wrapper);
-            process_drop_list(self, next, input_bytes, input_ptr);
+            process_drop_list(self, next, input_ptr);
             Py_DECREF(ready_list);
             return NULL;
         }
@@ -778,15 +820,19 @@ process_ready_list(PyRtpJBuf *self, struct rtp_frame *fp, PyObject *input_bytes,
 }
 
 static void
-process_drop_list(PyRtpJBuf *self, struct rtp_frame *fp, PyObject *input_bytes,
+process_drop_list(PyRtpJBuf *self, struct rtp_frame *fp,
     const unsigned char *input_ptr)
 {
     while (fp != NULL) {
         struct rtp_frame *next = fp->next;
         if (fp->type == RFT_RTP) {
             self->dropped += 1;
-            PyObject *data_obj = fetch_data_ref(self, fp->rtp.data, input_bytes, input_ptr);
-            Py_XDECREF(data_obj);
+            if (input_ptr == nullptr || fp->rtp.data != input_ptr) {
+                PyRtpJBufRef ref;
+                PyRtpJBufRef *refp = fetch_cached_ref(self, fp->rtp.data, &ref);
+                Py_XDECREF(refp->data);
+                Py_XDECREF(refp->opaque);
+            }
             rtpjbuf_frame_dtor(fp);
         }
         fp = next;
@@ -817,13 +863,14 @@ PyRtpJBuf_udp_in(PyRtpJBuf *self, PyObject *args)
 {
     PyObject *data_obj = NULL;
     PyObject *input_bytes = NULL;
+    PyObject *input_opaque = Py_None;
     const unsigned char *data = NULL;
     Py_ssize_t size = 0;
     struct rjb_udp_in_r ruir;
     PyObject *ready_list = NULL;
     int retained = 1;
 
-    if (!PyArg_ParseTuple(args, "O:udp_in", &data_obj))
+    if (!PyArg_ParseTuple(args, "O|O:udp_in", &data_obj, &input_opaque))
         return NULL;
     if (self->jb == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "RtpJBuf handle is not initialized");
@@ -835,7 +882,7 @@ PyRtpJBuf_udp_in(PyRtpJBuf *self, PyObject *args)
     ruir = rtpjbuf_udp_in(self->jb, data, (size_t)size);
     if (ruir.error != 0) {
         if (ruir.drop != NULL) {
-            process_drop_list(self, ruir.drop, input_bytes, data);
+            process_drop_list(self, ruir.drop, data);
         }
         Py_DECREF(input_bytes);
         if (ruir.error < RTP_PARSER_OK) {
@@ -849,16 +896,16 @@ PyRtpJBuf_udp_in(PyRtpJBuf *self, PyObject *args)
     if (list_has_data_ptr(ruir.ready, data) || list_has_data_ptr(ruir.drop, data))
         retained = 0;
     if (retained != 0) {
-        if (store_data_ref(self, input_bytes, data) != 0) {
-            process_drop_list(self, ruir.ready, input_bytes, data);
-            process_drop_list(self, ruir.drop, input_bytes, data);
+        if (store_data_ref(self, input_bytes, input_opaque, data) != 0) {
+            process_drop_list(self, ruir.ready, data);
+            process_drop_list(self, ruir.drop, data);
             Py_DECREF(input_bytes);
             return NULL;
         }
     }
 
-    ready_list = process_ready_list(self, ruir.ready, input_bytes, data);
-    process_drop_list(self, ruir.drop, input_bytes, data);
+    ready_list = process_ready_list(self, ruir.ready, input_bytes, input_opaque, data);
+    process_drop_list(self, ruir.drop, data);
     Py_DECREF(input_bytes);
     return ready_list;
 }
@@ -877,8 +924,8 @@ PyRtpJBuf_flush(PyRtpJBuf *self, PyObject *args)
     }
 
     ruir = rtpjbuf_flush(self->jb);
-    ready_list = process_ready_list(self, ruir.ready, Py_None, NO_INPUT_PTR);
-    process_drop_list(self, ruir.drop, Py_None, NO_INPUT_PTR);
+    ready_list = process_ready_list(self, ruir.ready, Py_None, Py_None, NO_INPUT_PTR);
+    process_drop_list(self, ruir.drop, NO_INPUT_PTR);
     return ready_list;
 }
 
@@ -891,22 +938,19 @@ PyRtpJBuf_dealloc(PyRtpJBuf *self)
             struct rjb_udp_in_r ruir = rtpjbuf_flush(self->jb);
             if (ruir.ready == NULL && ruir.drop == NULL)
                 break;
-            process_drop_list(self, ruir.ready, Py_None, NO_INPUT_PTR);
-            process_drop_list(self, ruir.drop, Py_None, NO_INPUT_PTR);
+            process_drop_list(self, ruir.ready, NO_INPUT_PTR);
+            process_drop_list(self, ruir.drop, NO_INPUT_PTR);
         }
         rtpjbuf_dtor(self->jb);
         self->jb = NULL;
     }
     if (self->refs != NULL) {
         for (unsigned int i = 0; i < self->capacity; i++) {
-            Py_XDECREF(self->refs[i]);
+            Py_XDECREF(self->refs[i].data);
+            Py_XDECREF(self->refs[i].opaque);
         }
         PyMem_Free(self->refs);
         self->refs = NULL;
-    }
-    if (self->ptrs != NULL) {
-        PyMem_Free(self->ptrs);
-        self->ptrs = NULL;
     }
     Py_TYPE(self)->tp_free((PyObject *)self);
 }
@@ -935,16 +979,11 @@ PyRtpJBuf_init(PyRtpJBuf *self, PyObject *args, PyObject *kwds)
     self->capacity = capacity;
     self->dropped = 0;
     self->refs = PyMem_Calloc(capacity, sizeof(*self->refs));
-    self->ptrs = PyMem_Calloc(capacity, sizeof(*self->ptrs));
-    if (self->refs == NULL || self->ptrs == NULL) {
+    if (self->refs == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "RtpJBuf reference buffer allocation failed");
         if (self->refs != NULL) {
             PyMem_Free(self->refs);
             self->refs = NULL;
-        }
-        if (self->ptrs != NULL) {
-            PyMem_Free(self->ptrs);
-            self->ptrs = NULL;
         }
         rtpjbuf_dtor(self->jb);
         self->jb = NULL;
