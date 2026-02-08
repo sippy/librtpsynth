@@ -110,13 +110,13 @@ PACKED_STRUCT(rtp_hdr) {
     unsigned int seq:16;	/* sequence number */
     uint32_t ts;		/* timestamp */
     uint32_t ssrc;		/* synchronization source */
-    uint32_t csrc[0];		/* optional CSRC list */
+    uint32_t csrc[];		/* optional CSRC list */
 };
 
 PACKED_STRUCT(rtp_hdr_ext) {
     uint16_t profile;		/* defined by profile */
     uint16_t length;		/* length of the following array in 32-byte words */
-    uint32_t extension[0];	/* actual extension data */
+    uint32_t extension[];	/* actual extension data */
 };
 
 #if !defined(rtp_hdr_t_DEFINED)

@@ -4,7 +4,7 @@ import os
 
 from distutils.core import setup
 from distutils.core import Extension
-from sysconfig import get_platform
+from sysconfig import get_config_var, get_platform
 
 from build_tools.RunCTest import RunCTest
 from build_tools.CheckVersion import CheckVersion
@@ -15,11 +15,14 @@ is_mac = get_platform().startswith('macosx-')
 rtpsynth_ext_srcs = ['python/RtpSynth_mod.c', 'src/rtpsynth.c', 'src/rtp.c']
 rtpjbuf_ext_srcs = ['python/RtpJBuf_mod.c', 'src/rtp.c', 'src/rtpjbuf.c']
 rtpserver_ext_srcs = ['python/RtpServer_mod.c', 'src/SPMCQueue.c']
+rtputils_ext_srcs = ['python/RtpUtils_mod.c']
 
 extra_compile_args = ['-Wall']
 if not is_win:
-    extra_compile_args += ['--std=c11', '-Wno-zero-length-array',
-                           '-flto', '-pedantic']
+    cc = (get_config_var('CC') or '').lower()
+    extra_compile_args += ['--std=c11', '-flto', '-pedantic']
+    if 'clang' in cc:
+        extra_compile_args.append('-Wno-zero-length-array')
 else:
     extra_compile_args.append('/std:clatest')
 extra_link_args = ['-flto'] if not is_win else []
@@ -56,9 +59,14 @@ module2 = Extension('rtpsynth.RtpJBuf', sources = rtpjbuf_ext_srcs, \
     extra_link_args = rtpjbuf_link_args, \
     extra_compile_args = extra_compile_args)
 
-module3 = None
+module3 = Extension('rtpsynth.RtpUtils', sources = rtputils_ext_srcs, \
+    include_dirs = ['src'], \
+    extra_link_args = rtpjbuf_link_args, \
+    extra_compile_args = extra_compile_args)
+
+module4 = None
 if not is_win:
-    module3 = Extension('rtpsynth.RtpServer', sources = rtpserver_ext_srcs, \
+    module4 = Extension('rtpsynth.RtpServer', sources = rtpserver_ext_srcs, \
         include_dirs = ['src'], \
         extra_link_args = rtpjbuf_link_args, \
         extra_compile_args = extra_compile_args)
@@ -69,9 +77,9 @@ RunCTest.extra_compile_args = extra_compile_args
 def get_ex_mod():
     if 'NO_PY_EXT' in os.environ:
         return None
-    modules = [module1, module2]
-    if module3 is not None:
-        modules.append(module3)
+    modules = [module1, module2, module3]
+    if module4 is not None:
+        modules.append(module4)
     return modules
 
 with open("README.md", "r") as fh:

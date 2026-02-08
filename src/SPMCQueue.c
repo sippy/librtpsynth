@@ -23,7 +23,7 @@ struct SPMCQueue {
     _Alignas(CACHE_LINE_SIZE) uint64_t readIdxCache;
     _Alignas(CACHE_LINE_SIZE) _Atomic uint64_t readIdx;
     _Alignas(CACHE_LINE_SIZE) _Atomic uint64_t writeIdxCache;
-    _Alignas(CACHE_LINE_SIZE) void* slots[0]; // FAM for void pointer type slots
+    _Alignas(CACHE_LINE_SIZE) void* slots[]; // FAM for void pointer type slots
 };
 
 static size_t

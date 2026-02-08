@@ -157,7 +157,7 @@ ch = None
 try:
     rx = []
     ch = srv.create_channel(
-        pkt_in=lambda pkt, addr: rx.append((pkt, addr)),
+        pkt_in=lambda pkt, addr, rtime_ns: rx.append((pkt, addr, rtime_ns)),
         bind_host="127.0.0.1",
         bind_port=0,
         queue_size=32,
@@ -179,3 +179,19 @@ finally:
 ```sh
 python tests/test_rtp_server.py
 ```
+
+## Audio Utils (Python): RtpUtils
+
+`rtpsynth.RtpUtils` provides optimized CPython helpers for PCM16 and G.711u:
+
+- `RtpUtils.resample_linear(pcm16, in_rate, out_rate) -> array('h')`
+- `RtpUtils.linear2ulaw(sample:int) -> int`
+- `RtpUtils.linear2ulaw(pcm16) -> bytes`
+- `RtpUtils.ulaw2linear(ulaw:int) -> int`
+- `RtpUtils.ulaw2linear(ulaw_bytes) -> array('h')`
+
+`pcm16` accepts `array('h')` and bytes-like PCM16 input.
+
+The same helpers are exported at module level, so you can also do:
+
+- `from rtpsynth.RtpUtils import resample_linear, linear2ulaw, ulaw2linear`

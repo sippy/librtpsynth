@@ -17,9 +17,13 @@
 
 #define BOOLVAL(x)  (x)
 #if !defined(_WIN32) && !defined(_WIN64)
-#define x_unlikely(x) (__builtin_expect((x), 0), (x))
+#if defined(__GNUC__) || defined(__clang__)
+#define x_unlikely(x) (__builtin_expect(!!(x), 0))
 #else
-#define x_unlikely(x) (x) [[unlikely]]
+#define x_unlikely(x) ((x))
+#endif
+#else
+#define x_unlikely(x) ((x))
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)
