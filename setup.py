@@ -14,6 +14,7 @@ is_mac = get_platform().startswith('macosx-')
 
 rtpsynth_ext_srcs = ['python/RtpSynth_mod.c', 'src/rtpsynth.c', 'src/rtp.c']
 rtpjbuf_ext_srcs = ['python/RtpJBuf_mod.c', 'src/rtp.c', 'src/rtpjbuf.c']
+rtpserver_ext_srcs = ['python/RtpServer_mod.c', 'src/SPMCQueue.c']
 
 extra_compile_args = ['-Wall']
 if not is_win:
@@ -55,13 +56,23 @@ module2 = Extension('rtpsynth.RtpJBuf', sources = rtpjbuf_ext_srcs, \
     extra_link_args = rtpjbuf_link_args, \
     extra_compile_args = extra_compile_args)
 
+module3 = None
+if not is_win:
+    module3 = Extension('rtpsynth.RtpServer', sources = rtpserver_ext_srcs, \
+        include_dirs = ['src'], \
+        extra_link_args = rtpjbuf_link_args, \
+        extra_compile_args = extra_compile_args)
+
 RunCTest.extra_link_args = extra_link_args.copy()
 RunCTest.extra_compile_args = extra_compile_args
 
 def get_ex_mod():
     if 'NO_PY_EXT' in os.environ:
         return None
-    return [module1, module2]
+    modules = [module1, module2]
+    if module3 is not None:
+        modules.append(module3)
+    return modules
 
 with open("README.md", "r") as fh:
     long_description = fh.read()

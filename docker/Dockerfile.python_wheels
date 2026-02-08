@@ -23,7 +23,7 @@ RUN auditwheel repair dist/*.whl --wheel-dir dist_out
 
 FROM build AS test
 RUN ${PYTHON_CMD} -m pip install dist_out/*.whl
-RUN ${PYTHON_CMD} -m unittest tests.test_synth tests.test_jbuf
+RUN ${PYTHON_CMD} -m unittest discover -s tests -p 'test_*.py'
 RUN date > dist_out/test_done.ts
 
 FROM scratch AS export

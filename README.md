@@ -87,3 +87,95 @@ Frames in `ready`/`drop` are a linked list of `struct rtp_frame`:
 - `type == RFT_ERS` provides erasure info (`lseq_start`, `lseq_end`, `ts_diff`).
 
 ### RtpJBuf (Python)
+
+## RTP I/O Thread (Python): RtpServer / RtpChannel
+
+`rtpsynth.RtpServer` provides a single worker thread that multiplexes UDP I/O
+for many channels. Each `RtpChannel` is a bidirectional RTP pipe with:
+- one UDP socket bound to a local address;
+- one fixed callback for incoming packets;
+- one fixed-size lossy non-blocking output queue.
+
+### Build
+
+Build and install all Python extensions (including `rtpsynth.RtpServer`):
+
+```sh
+python setup.py build install
+```
+
+### Public API
+
+- `RtpServer(tick_hz=200)`
+  Starts the worker thread. `tick_hz` controls loop frequency (`poll recv`,
+  drain output queues, sleep until next tick).
+
+- `server.create_channel(pkt_in, bind_host=None, bind_port=0, queue_size=32, bind_family=0)`
+  Creates an `RtpChannel` and hands its socket to the worker.
+  `pkt_in` is called as `pkt_in(pkt_bytes, (host, port), rtime_ns)`.
+  `rtime_ns` is a `CLOCK_MONOTONIC` timestamp captured once when `poll()`
+  returns with ready sockets.
+  `bind_family` selects socket family explicitly (`0`/`"auto"`, `4`/`"ipv4"`,
+  `6`/`"ipv6"`). When `bind_host` is `None`, default bind host is
+  `0.0.0.0` for IPv4/auto and `::` for IPv6.
+  `queue_size` must be a power of two and greater than zero.
+
+- `channel.set_target(host, port)`
+  Sets UDP destination for outgoing packets.
+
+- `channel.send_pkt(data)`
+  Enqueues one packet for send. Non-blocking.
+  Raises `RtpQueueFullError` when channel queue is full.
+
+- `channel.close()`
+  Requests channel removal from the server.
+
+- `server.shutdown()`
+  Stops the worker thread (safe to call more than once).
+
+- `channel.local_addr` (property)
+  Returns `(host, port)` the channel socket is bound to.
+
+- `channel.closed` (property)
+  Boolean closed state.
+
+### Notes
+
+- `send_pkt()` must only be used after `set_target()`.
+- Output queues are lossy by design: if a queue is full, packets are dropped.
+- If no channels are active, worker sleeps waiting for commands.
+- `python/RtpServer.py` is not a ctypes fallback; the CPython extension module
+  is required.
+
+### Minimal example
+
+```python
+from rtpsynth.RtpServer import RtpQueueFullError, RtpServer
+
+srv = RtpServer(tick_hz=200)
+ch = None
+try:
+    rx = []
+    ch = srv.create_channel(
+        pkt_in=lambda pkt, addr: rx.append((pkt, addr)),
+        bind_host="127.0.0.1",
+        bind_port=0,
+        queue_size=32,
+    )
+    addr = ch.local_addr
+    ch.set_target(addr[0], addr[1])
+    try:
+        ch.send_pkt(b"hello")
+    except RtpQueueFullError:
+        pass
+finally:
+    if ch is not None:
+        ch.close()
+    srv.shutdown()
+```
+
+### Tests
+
+```sh
+python tests/test_rtp_server.py
+```
