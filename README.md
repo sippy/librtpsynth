@@ -180,6 +180,34 @@ finally:
 python tests/test_rtp_server.py
 ```
 
+## RTP Processing Scheduler (Python): RtpProc / RtpProcChannel
+
+`rtpsynth.RtpProc` is a singleton worker-thread scheduler for periodic
+processing callbacks shared across many channels/sessions.
+
+- `RtpProc()`
+  Returns the singleton instance.
+
+- `proc.create_channel(proc_in)`
+  Creates `RtpProcChannel`.
+  `proc_in(now_ns, deadline_ns)` is called immediately on channel creation on
+  the worker thread, then periodically according to its return value.
+  For the initial call, `deadline_ns == 0`. For scheduled calls,
+  `deadline_ns` is the originally requested run timestamp.
+  Return `next_run_ns` (monotonic ns) to reschedule.
+  Returning `base_ns + period_ns` is recommended to avoid drift, where
+  `base_ns = now_ns if deadline_ns == 0 else deadline_ns`.
+  Returning `None` stops further scheduling for that channel.
+  If callback raises, the channel is also unscheduled; the exception is
+  re-raised on `channel.close()` as `ChannelProcError` chained from the
+  original callback exception.
+
+- `channel.close()`
+  Removes the channel from scheduler.
+
+- `proc.shutdown()`
+  Stops the worker thread.
+
 ## Audio Utils (Python): RtpUtils
 
 `rtpsynth.RtpUtils` provides optimized CPython helpers for PCM16 and G.711u:

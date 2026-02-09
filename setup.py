@@ -16,6 +16,7 @@ rtpsynth_ext_srcs = ['python/RtpSynth_mod.c', 'src/rtpsynth.c', 'src/rtp.c']
 rtpjbuf_ext_srcs = ['python/RtpJBuf_mod.c', 'src/rtp.c', 'src/rtpjbuf.c']
 rtpserver_ext_srcs = ['python/RtpServer_mod.c', 'src/SPMCQueue.c']
 rtputils_ext_srcs = ['python/RtpUtils_mod.c']
+rtpproc_ext_srcs = ['python/RtpProc_mod.c']
 
 extra_compile_args = ['-Wall']
 if not is_win:
@@ -65,8 +66,13 @@ module3 = Extension('rtpsynth.RtpUtils', sources = rtputils_ext_srcs, \
     extra_compile_args = extra_compile_args)
 
 module4 = None
+module5 = None
 if not is_win:
-    module4 = Extension('rtpsynth.RtpServer', sources = rtpserver_ext_srcs, \
+    module4 = Extension('rtpsynth.RtpProc', sources = rtpproc_ext_srcs, \
+        include_dirs = ['src'], \
+        extra_link_args = rtpjbuf_link_args, \
+        extra_compile_args = extra_compile_args)
+    module5 = Extension('rtpsynth.RtpServer', sources = rtpserver_ext_srcs, \
         include_dirs = ['src'], \
         extra_link_args = rtpjbuf_link_args, \
         extra_compile_args = extra_compile_args)
@@ -80,6 +86,8 @@ def get_ex_mod():
     modules = [module1, module2, module3]
     if module4 is not None:
         modules.append(module4)
+    if module5 is not None:
+        modules.append(module5)
     return modules
 
 with open("README.md", "r") as fh:
