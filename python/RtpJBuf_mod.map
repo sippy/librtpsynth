@@ -1,0 +1,6 @@
+RTPSYNTH_44f19aa4_RtpJBuf {
+    global:
+        PyInit_RtpJBuf;
+    local:
+        *;
+};

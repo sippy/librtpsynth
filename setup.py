@@ -11,12 +11,13 @@ from build_tools.CheckVersion import CheckVersion
 
 is_win = get_platform().startswith('win')
 is_mac = get_platform().startswith('macosx-')
+is_elf = not is_win and not is_mac
 
 rtpsynth_ext_srcs = ['python/RtpSynth_mod.c', 'src/rtpsynth.c', 'src/rtp.c']
 rtpjbuf_ext_srcs = ['python/RtpJBuf_mod.c', 'src/rtp.c', 'src/rtpjbuf.c']
-rtpserver_ext_srcs = ['python/RtpServer_mod.c', 'src/SPMCQueue.c']
+rtpserver_ext_srcs = ['python/RtpServer_mod.c', 'src/SPMCQueue.c', 'src/rtp_sync.c']
 rtputils_ext_srcs = ['python/RtpUtils_mod.c']
-rtpproc_ext_srcs = ['python/RtpProc_mod.c']
+rtpproc_ext_srcs = ['python/RtpProc_mod.c', 'src/rtp_sync.c']
 
 extra_compile_args = ['-Wall']
 if not is_win:
@@ -42,13 +43,19 @@ else:
     extra_compile_args.extend(nodebug_opts)
     extra_link_args.extend(nodebug_opts)
 
-rtpjbuf_link_args = extra_link_args.copy()
-if is_mac:
-    rtpjbuf_link_args.extend(['-undefined', 'dynamic_lookup'])
+def link_args_for_map(map_path):
+    out = extra_link_args.copy()
+    if is_mac:
+        out.extend(['-undefined', 'dynamic_lookup'])
+    if is_elf:
+        out.append(f'-Wl,--version-script={map_path}')
+    return out
 
-rtpsynth_link_args = extra_link_args.copy()
-if is_mac:
-    rtpsynth_link_args.extend(['-undefined', 'dynamic_lookup'])
+rtpsynth_link_args = link_args_for_map('python/RtpSynth_mod.map')
+rtpjbuf_link_args = link_args_for_map('python/RtpJBuf_mod.map')
+rtputils_link_args = link_args_for_map('python/RtpUtils_mod.map')
+rtpproc_link_args = link_args_for_map('python/RtpProc_mod.map')
+rtpserver_link_args = link_args_for_map('python/RtpServer_mod.map')
 
 module1 = Extension('rtpsynth.RtpSynth', sources = rtpsynth_ext_srcs, \
     include_dirs = ['src'], \
@@ -62,7 +69,7 @@ module2 = Extension('rtpsynth.RtpJBuf', sources = rtpjbuf_ext_srcs, \
 
 module3 = Extension('rtpsynth.RtpUtils', sources = rtputils_ext_srcs, \
     include_dirs = ['src'], \
-    extra_link_args = rtpjbuf_link_args, \
+    extra_link_args = rtputils_link_args, \
     extra_compile_args = extra_compile_args)
 
 module4 = None
@@ -70,11 +77,11 @@ module5 = None
 if not is_win:
     module4 = Extension('rtpsynth.RtpProc', sources = rtpproc_ext_srcs, \
         include_dirs = ['src'], \
-        extra_link_args = rtpjbuf_link_args, \
+        extra_link_args = rtpproc_link_args, \
         extra_compile_args = extra_compile_args)
     module5 = Extension('rtpsynth.RtpServer', sources = rtpserver_ext_srcs, \
         include_dirs = ['src'], \
-        extra_link_args = rtpjbuf_link_args, \
+        extra_link_args = rtpserver_link_args, \
         extra_compile_args = extra_compile_args)
 
 RunCTest.extra_link_args = extra_link_args.copy()

@@ -1,5 +1,6 @@
 include build_tools/__init__.py build_tools/RunCTest.py build_tools/CheckVersion.py
 include src/rsth_timeops.h src/rtp.h src/rtp_info.h src/rtpjbuf.h src/rtpsynth.h src/Symbol.map
 include src/SPMCQueue.h src/SPMCQueue.c src/rtp.c src/rtpjbuf.c src/rtpsynth.c
-include src/winnet.h python/RtpSynth_mod.c python/RtpJBuf_mod.c python/RtpServer_mod.c python/RtpUtils_mod.c python/RtpProc_mod.c
+include src/rtp_sync.h src/rtp_sync.c
+include src/winnet.h python/RtpSynth_mod.c python/RtpJBuf_mod.c python/RtpServer_mod.c python/RtpUtils_mod.c python/RtpProc_mod.c python/RtpSynth_mod.map python/RtpJBuf_mod.map python/RtpUtils_mod.map python/RtpProc_mod.map python/RtpServer_mod.map
 include README.md

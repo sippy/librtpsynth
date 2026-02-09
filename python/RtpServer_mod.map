@@ -1,0 +1,6 @@
+RTPSYNTH_44f19aa4_RtpServer {
+    global:
+        PyInit_RtpServer;
+    local:
+        *;
+};

@@ -1,0 +1,6 @@
+RTPSYNTH_44f19aa4_RtpUtils {
+    global:
+        PyInit_RtpUtils;
+    local:
+        *;
+};

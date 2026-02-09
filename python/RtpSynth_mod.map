@@ -1,0 +1,6 @@
+RTPSYNTH_44f19aa4_RtpSynth {
+    global:
+        PyInit_RtpSynth;
+    local:
+        *;
+};

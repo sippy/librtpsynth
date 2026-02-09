@@ -1,0 +1,6 @@
+RTPSYNTH_44f19aa4_RtpProc {
+    global:
+        PyInit_RtpProc;
+    local:
+        *;
+};
