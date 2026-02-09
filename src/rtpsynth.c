@@ -81,8 +81,10 @@ struct rsynth_inst {
     struct rsynth_seq l;
     int ts_inc;
     struct timespec last_ts;
-    struct rtp_hdr model;
+    unsigned char model[sizeof(struct rtp_hdr)];
 };
+
+#define RS_MODEL(rip) ((struct rtp_hdr *)((rip)->model))
 
 #if defined(_WIN32) || defined(_WIN64)
 #include <profileapi.h>
@@ -115,19 +117,21 @@ void *
 rsynth_ctor(int srate, int ptime)
 {
     struct rsynth_inst *rip;
+    struct rtp_hdr *model;
     uint32_t rand_val;
 
     rip = malloc(sizeof(struct rsynth_inst));
     if (rip == NULL)
         return (NULL);
     memset(rip, '\0', sizeof(struct rsynth_inst));
+    model = RS_MODEL(rip);
     rip->srate = srate;
     rip->ptime = ptime;
     rip->ts_inc = 80 * ptime / 10;
-    rip->model.version = 2;
-    rip->model.mbt = 1;
+    model->version = 2;
+    model->mbt = 1;
     rand_val = rsynth_randfunc(rsynth_randfunc_arg);
-    rip->model.ssrc = rand_val;
+    model->ssrc = rand_val;
     rand_val = rsynth_randfunc(rsynth_randfunc_arg);
     rip->l.ts = rand_val & 0xfffffffe;
     rand_val = rsynth_randfunc(rsynth_randfunc_arg);
@@ -141,11 +145,13 @@ rsynth_next_pkt_pa(void *_rip, int plen, int pt, char *buf, unsigned int blen,
   int filled)
 {
     struct rsynth_inst *rip;
+    struct rtp_hdr *model;
     struct rtp_hdr *rnp;
     unsigned int rs, hl;
 
     rip = (struct rsynth_inst *)_rip;
-    hl = RTP_HDR_LEN(&rip->model);
+    model = RS_MODEL(rip);
+    hl = RTP_HDR_LEN(model);
     rs = hl + plen;
     if (rs > blen)
         return (-1);
@@ -157,11 +163,11 @@ rsynth_next_pkt_pa(void *_rip, int plen, int pt, char *buf, unsigned int blen,
         memset(buf + hl + plen, '\0', blen - hl - plen);
     }
 
-    memcpy(rnp, &rip->model, sizeof(struct rtp_hdr));
+    memcpy(rnp, model, sizeof(struct rtp_hdr));
     rnp->pt = pt;
     rnp->seq = htons(rip->l.seq);
     rnp->ts = htonl(rip->l.ts);
-    rip->model.mbt = 0;
+    model->mbt = 0;
     rip->l.seq++;
     rip->l.ts += rip->ts_inc;
 
@@ -178,7 +184,7 @@ rsynth_next_pkt(void *_rip, int plen, int pt)
     size_t rs;
 
     rip = (struct rsynth_inst *)_rip;
-    rs = RTP_HDR_LEN(&rip->model) + plen;
+    rs = RTP_HDR_LEN(RS_MODEL(rip)) + plen;
     rnp = malloc(rs);
     if (rnp == NULL)
         return (NULL);
@@ -201,11 +207,13 @@ unsigned int
 rsynth_set_mbt(void *_rip, unsigned int new_st)
 {
     struct rsynth_inst *rip;
+    struct rtp_hdr *model;
     unsigned int old_st;
 
     rip = (struct rsynth_inst *)_rip;
-    old_st = rip->model.mbt;
-    rip->model.mbt = new_st;
+    model = RS_MODEL(rip);
+    old_st = model->mbt;
+    model->mbt = new_st;
     return (old_st);
 }
 
