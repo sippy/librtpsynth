@@ -101,7 +101,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 kwargs = {'name':'rtpsynth',
-      'version':'1.2.1',
+      'version':'1.3.0',
       'description':'Library optimized to generate/process sequence of the RTP packets',
       'long_description': long_description,
       'long_description_content_type': "text/markdown",
