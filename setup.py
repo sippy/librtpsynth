@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 
 import os
+import sys
 
-from distutils.core import setup
-from distutils.core import Extension
+from setuptools import setup
+from setuptools import Extension
 from sysconfig import get_config_var, get_platform
+
+sys.path.insert(0, os.path.dirname(__file__))
 
 from build_tools.RunCTest import RunCTest
 from build_tools.CheckVersion import CheckVersion
