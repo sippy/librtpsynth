@@ -4,6 +4,7 @@ import socket
 import sys
 import time
 import unittest
+import weakref
 
 try:
     from rtpsynth.RtpServer import RtpQueueFullError, RtpServer
@@ -181,6 +182,42 @@ class TestRtpServer(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 ch.close()
         finally:
+            srv.shutdown()
+
+    def test_channel_close_releases_pkt_in_callback_before_return(self):
+        class Marker:
+            pass
+
+        def make_callback(marker):
+            def pkt_in(_pkt, _addr, _rtime):
+                return None
+            pkt_in.marker = marker
+            return pkt_in
+
+        srv = RtpServer()
+        ch = None
+        try:
+            marker = Marker()
+            marker_ref = weakref.ref(marker)
+            pkt_in = make_callback(marker)
+            pkt_in_ref = weakref.ref(pkt_in)
+            ch = srv.create_channel(
+                pkt_in=pkt_in,
+                bind_host="127.0.0.1",
+                bind_port=0,
+            )
+            del marker, pkt_in
+
+            ch.close()
+            ch = None
+            gc.collect()
+            gc.collect()
+
+            self.assertIsNone(pkt_in_ref())
+            self.assertIsNone(marker_ref())
+        finally:
+            if ch is not None and not ch.closed:
+                ch.close()
             srv.shutdown()
 
     def test_create_channel_huge_queue_size(self):

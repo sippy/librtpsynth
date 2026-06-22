@@ -1421,7 +1421,10 @@ static int
 rtp_channel_close_internal(PyRtpChannel *self, int with_error)
 {
     RtpServerCmd *cmd;
+    RtpCmdWaiter *waiter = NULL;
     PyRtpServer *server;
+    int cmd_status = 0;
+    int wait_for_remove = 0;
 
     assert(self != NULL);
     if (self->closed) {
@@ -1437,6 +1440,8 @@ rtp_channel_close_internal(PyRtpChannel *self, int with_error)
     }
 
     server = (PyRtpServer *)self->server_obj;
+    wait_for_remove = !pthread_equal(pthread_self(), server->worker);
+
     cmd = calloc(1, sizeof(*cmd));
     if (cmd == NULL) {
         if (with_error)
@@ -1446,11 +1451,44 @@ rtp_channel_close_internal(PyRtpChannel *self, int with_error)
 
     cmd->type = CMD_REMOVE_CHANNEL;
     cmd->u.remove_channel.id = self->id;
+    cmd->waiter = NULL;
+
+    if (wait_for_remove) {
+        if (server_waiter_acquire(server, &waiter) != 0) {
+            if (with_error) {
+                free_command(cmd);
+                return -1;
+            }
+            PyErr_Clear();
+            wait_for_remove = 0;
+        } else {
+            cmd->waiter = waiter;
+        }
+    }
 
     if (enqueue_command(server, cmd, with_error) != 0) {
+        if (waiter != NULL)
+            server_waiter_release(server);
         if (with_error && !PyErr_ExceptionMatches(PyExc_RuntimeError))
             return -1;
         PyErr_Clear();
+        self->closed = 1;
+        self->out_q = NULL;
+        return 0;
+    }
+
+    if (waiter != NULL) {
+        Py_BEGIN_ALLOW_THREADS
+        cmd_status = rtp_sync_waiter_wait(waiter);
+        Py_END_ALLOW_THREADS
+        server_waiter_release(server);
+
+        if (cmd_status != 0 && with_error) {
+            PyErr_Format(PyExc_RuntimeError,
+                "failed to remove channel from worker (status=%d: %s)",
+                cmd_status, strerror(cmd_status));
+            return -1;
+        }
     }
 
     self->closed = 1;
