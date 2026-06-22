@@ -59,6 +59,8 @@ jobs:
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v6
+      env:
+        PIP_NO_CACHE_DIR: 1
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -99,9 +101,7 @@ jobs:
     permissions:
       packages: write
     needs: build_test_python
-    uses: sippy/cimagic/.github/workflows/BuildPythonWheels.yml@v2
-    with:
-      py_versions: '["3.10", "3.11", "3.12", "3.13", "3.14"]'
+    uses: sippy/cimagic/.github/workflows/BuildPythonWheels.yml@v3
 
   publish_all_wheels:
     name: Publish Python Wheels
@@ -126,6 +126,8 @@ jobs:
 
     - name: Set up Python
       uses: actions/setup-python@v6
+      env:
+        PIP_NO_CACHE_DIR: 1
       with:
         python-version: '3.x'
 
@@ -153,4 +155,4 @@ jobs:
     needs: publish_all_wheels
     permissions:
       contents: write
-    uses: sippy/cimagic/.github/workflows/RollReleaseDraft.yml@v2
+    uses: sippy/cimagic/.github/workflows/RollReleaseDraft.yml@v3
