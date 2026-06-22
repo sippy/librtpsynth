@@ -82,7 +82,7 @@ class TestRtpServer(unittest.TestCase):
                 ch_b.close()
             srv.shutdown()
 
-    def test_channel_destruction_and_shutdown(self):
+    def test_channel_close_and_shutdown(self):
         received = []
         srv = RtpServer()
         ch = srv.create_channel(
@@ -91,6 +91,7 @@ class TestRtpServer(unittest.TestCase):
             bind_port=0,
         )
         addr = ch.local_addr
+        ch.close()
         ch = None
         gc.collect()
         gc.collect()
@@ -184,7 +185,7 @@ class TestRtpServer(unittest.TestCase):
         finally:
             srv.shutdown()
 
-    def test_channel_close_releases_pkt_in_callback_before_return(self):
+    def test_channel_close_releases_pkt_in_callback(self):
         class Marker:
             pass
 
@@ -210,15 +211,70 @@ class TestRtpServer(unittest.TestCase):
 
             ch.close()
             ch = None
-            gc.collect()
-            gc.collect()
 
-            self.assertIsNone(pkt_in_ref())
-            self.assertIsNone(marker_ref())
+            self.assertTrue(wait_for(lambda: pkt_in_ref() is None))
+            self.assertTrue(wait_for(lambda: marker_ref() is None))
         finally:
             if ch is not None and not ch.closed:
                 ch.close()
             srv.shutdown()
+
+    def test_server_shutdown_releases_pkt_in_callback(self):
+        class Marker:
+            pass
+
+        def make_callback(marker):
+            def pkt_in(_pkt, _addr, _rtime):
+                return None
+            pkt_in.marker = marker
+            return pkt_in
+
+        srv = RtpServer()
+        marker = Marker()
+        marker_ref = weakref.ref(marker)
+        pkt_in = make_callback(marker)
+        pkt_in_ref = weakref.ref(pkt_in)
+        srv.create_channel(
+            pkt_in=pkt_in,
+            bind_host="127.0.0.1",
+            bind_port=0,
+        )
+        del marker, pkt_in
+
+        srv.shutdown()
+        gc.collect()
+        gc.collect()
+
+        self.assertIsNone(pkt_in_ref())
+        self.assertIsNone(marker_ref())
+
+    def test_channel_close_after_server_shutdown_is_local_only(self):
+        srv = RtpServer()
+        ch = srv.create_channel(
+            pkt_in=lambda _pkt, _addr, _rtime: None,
+            bind_host="127.0.0.1",
+            bind_port=0,
+        )
+
+        srv.shutdown()
+
+        self.assertFalse(ch.closed)
+        with self.assertRaises(RuntimeError):
+            ch.close()
+        del ch
+
+    def test_channel_dealloc_after_server_shutdown_does_not_wait(self):
+        srv = RtpServer()
+        ch = srv.create_channel(
+            pkt_in=lambda _pkt, _addr, _rtime: None,
+            bind_host="127.0.0.1",
+            bind_port=0,
+        )
+
+        srv.shutdown()
+        ch = None
+        gc.collect()
+        gc.collect()
 
     def test_create_channel_huge_queue_size(self):
         srv = RtpServer()
