@@ -85,14 +85,12 @@ typedef struct {
     pthread_t worker;
     int worker_running;
     int server_inited;
-    int cmd_waiter_busy;
     int shutdown_queued;
     int accepting_commands;
     uint64_t tick_ns;
     clockid_t cmd_cv_clock;
     pthread_mutex_t cmd_lock;
     pthread_cond_t cmd_cv;
-    RtpCmdWaiter cmd_waiter;
     RtpServerCmd *cmd_head;
     RtpServerCmd *cmd_tail;
     RtpChannelState **channels;
@@ -460,56 +458,26 @@ clear_poll_cache(PyRtpServer *self)
     self->pollfds_dirty = 0;
 }
 
-static void
-server_waiter_release(PyRtpServer *self)
-{
-    int rc;
-
-    assert(self != NULL);
-    assert(self->server_inited);
-    rc = pthread_mutex_lock(&self->cmd_lock);
-    assert(rc == 0);
-    self->cmd_waiter_busy = 0;
-    rc = pthread_mutex_unlock(&self->cmd_lock);
-    assert(rc == 0);
-}
-
 static int
-server_waiter_acquire(PyRtpServer *self, RtpCmdWaiter **out_waiter)
+server_waiter_acquire(RtpCmdWaiter **out_waiter)
 {
-    int rc;
+    RtpCmdWaiter *waiter;
 
-    assert(self != NULL);
     assert(out_waiter != NULL);
+    *out_waiter = NULL;
 
-    if (!self->server_inited) {
-        PyErr_SetString(PyExc_RuntimeError, "RtpServer is not initialized");
-        return -1;
-    }
-    rc = pthread_mutex_lock(&self->cmd_lock);
-    assert(rc == 0);
-    if (rc != 0) {
-        PyErr_SetString(PyExc_RuntimeError, "failed to lock command queue");
-        return -1;
-    }
-    if (self->cmd_waiter_busy) {
-        rc = pthread_mutex_unlock(&self->cmd_lock);
-        assert(rc == 0);
-        PyErr_SetString(PyExc_RuntimeError,
-            "another synchronous command is already in progress");
-        return -1;
-    }
-    self->cmd_waiter_busy = 1;
-    rc = pthread_mutex_unlock(&self->cmd_lock);
-    assert(rc == 0);
-
-    if (rtp_sync_waiter_reset(&self->cmd_waiter) != 0) {
-        server_waiter_release(self);
-        PyErr_SetString(PyExc_RuntimeError, "failed to reset command waiter");
+    waiter = rtp_sync_waiter_ctor();
+    if (waiter == NULL) {
+        if (errno == ENOMEM) {
+            PyErr_NoMemory();
+        } else {
+            PyErr_SetString(PyExc_RuntimeError,
+                "failed to initialize command waiter");
+        }
         return -1;
     }
 
-    *out_waiter = &self->cmd_waiter;
+    *out_waiter = waiter;
     return 0;
 }
 
@@ -1043,7 +1011,7 @@ rtp_server_drop_channels_internal(PyRtpServer *self)
         goto e0;
     }
 
-    if (server_waiter_acquire(self, &waiter) != 0) {
+    if (server_waiter_acquire(&waiter) != 0) {
         goto e1;
     }
 
@@ -1068,7 +1036,7 @@ rtp_server_drop_channels_internal(PyRtpServer *self)
     Py_BEGIN_ALLOW_THREADS
     cmd_status = rtp_sync_waiter_wait(waiter);
     Py_END_ALLOW_THREADS
-    server_waiter_release(self);
+    rtp_sync_waiter_dtor(waiter);
 
     if (cmd_status != 0) {
         PyErr_Format(PyExc_RuntimeError,
@@ -1079,7 +1047,7 @@ rtp_server_drop_channels_internal(PyRtpServer *self)
 
     return 0;
 e2:
-    server_waiter_release(self);
+    rtp_sync_waiter_dtor(waiter);
 e1:
     free_command(cmd);
 e0:
@@ -1146,7 +1114,6 @@ PyRtpServer_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 
     self->worker_running = 0;
     self->server_inited = 0;
-    self->cmd_waiter_busy = 0;
     self->shutdown_queued = 0;
     self->accepting_commands = 1;
     self->tick_ns = 1000000000ULL / DEFAULT_TICK_HZ;
@@ -1198,15 +1165,9 @@ PyRtpServer_init(PyRtpServer *self, PyObject *args, PyObject *kwds)
         }
     }
 
-    if (rtp_sync_waiter_init(&self->cmd_waiter) != 0) {
-        PyErr_SetString(PyExc_RuntimeError, "failed to initialize command waiter");
-        goto fail_cmd_cv;
-    }
-    self->cmd_waiter_busy = 0;
-
     if (pthread_create(&self->worker, NULL, rtp_server_worker, self) != 0) {
         PyErr_SetString(PyExc_RuntimeError, "failed to create worker thread");
-        goto fail_cmd_waiter;
+        goto fail_cmd_cv;
     }
 
     self->worker_running = 1;
@@ -1215,8 +1176,6 @@ PyRtpServer_init(PyRtpServer *self, PyObject *args, PyObject *kwds)
     self->server_inited = 1;
     return 0;
 
-fail_cmd_waiter:
-    rtp_sync_waiter_destroy(&self->cmd_waiter);
 fail_cmd_cv:
     pthread_cond_destroy(&self->cmd_cv);
 fail_cmd_lock:
@@ -1232,7 +1191,6 @@ PyRtpServer_dealloc(PyRtpServer *self)
         (void)rtp_server_stop_worker_internal(self, 0);
         free_command_list(detach_commands(self));
         clear_poll_cache(self);
-        rtp_sync_waiter_destroy(&self->cmd_waiter);
         pthread_cond_destroy(&self->cmd_cv);
         pthread_mutex_destroy(&self->cmd_lock);
     }
@@ -1368,7 +1326,7 @@ PyRtpServer_create_channel(PyRtpServer *self, PyObject *args, PyObject *kwds)
     cmd->u.add_channel.channel = state;
     Py_INCREF(channel);
 
-    if (server_waiter_acquire(self, &waiter) != 0) {
+    if (server_waiter_acquire(&waiter) != 0) {
         goto fail_cmd_channel_fd;
     }
     cmd->waiter = waiter;
@@ -1392,13 +1350,13 @@ PyRtpServer_create_channel(PyRtpServer *self, PyObject *args, PyObject *kwds)
         }
         goto fail_cmd;
     }
-    server_waiter_release(self);
+    rtp_sync_waiter_dtor(waiter);
 
     return (PyObject *)channel;
 
 fail_cmd:
 fail_waiter_channel_fd:
-    server_waiter_release(self);
+    rtp_sync_waiter_dtor(waiter);
 fail_cmd_channel_fd:
     if (cmd != NULL)
         free_command(cmd);
@@ -1504,7 +1462,7 @@ rtp_channel_close_internal(PyRtpChannel *self, int with_error)
     cmd->u.remove_channel.channel = state;
 
     if (wait_for_remove) {
-        if (server_waiter_acquire(server, &waiter) != 0) {
+        if (server_waiter_acquire(&waiter) != 0) {
             if (with_error) {
                 free_command(cmd);
                 return -1;
@@ -1518,7 +1476,7 @@ rtp_channel_close_internal(PyRtpChannel *self, int with_error)
 
     if (enqueue_command(server, cmd, with_error) != 0) {
         if (waiter != NULL)
-            server_waiter_release(server);
+            rtp_sync_waiter_dtor(waiter);
         free_command(cmd);
         if (with_error && !PyErr_ExceptionMatches(PyExc_RuntimeError))
             return -1;
@@ -1531,7 +1489,7 @@ rtp_channel_close_internal(PyRtpChannel *self, int with_error)
         Py_BEGIN_ALLOW_THREADS
         cmd_status = rtp_sync_waiter_wait(waiter);
         Py_END_ALLOW_THREADS
-        server_waiter_release(server);
+        rtp_sync_waiter_dtor(waiter);
 
         if (cmd_status != 0 && with_error) {
             PyErr_Format(PyExc_RuntimeError,
@@ -1613,7 +1571,7 @@ PyRtpChannel_set_target(PyRtpChannel *self, PyObject *args)
     cmd->u.set_target.addr = target;
     cmd->u.set_target.addrlen = target_len;
 
-    if (server_waiter_acquire(server, &waiter) != 0)
+    if (server_waiter_acquire(&waiter) != 0)
         goto e0;
 
     cmd->waiter = waiter;
@@ -1624,7 +1582,7 @@ PyRtpChannel_set_target(PyRtpChannel *self, PyObject *args)
     Py_BEGIN_ALLOW_THREADS
     cmd_status = rtp_sync_waiter_wait(waiter);
     Py_END_ALLOW_THREADS
-    server_waiter_release(server);
+    rtp_sync_waiter_dtor(waiter);
 
     if (cmd_status != 0) {
         if (cmd_status == ENOENT) {
@@ -1640,7 +1598,7 @@ PyRtpChannel_set_target(PyRtpChannel *self, PyObject *args)
     self->has_target = 1;
     Py_RETURN_NONE;
 e1:
-    server_waiter_release(server);
+    rtp_sync_waiter_dtor(waiter);
 e0:
     free_command(cmd);
     return NULL;

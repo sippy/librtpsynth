@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "rtp_sync.h"
 
@@ -29,11 +30,18 @@
 int
 rtp_sync_waiter_init(rtp_sync_waiter *waiter)
 {
+    int rc;
+
     assert(waiter != NULL);
-    if (pthread_mutex_init(&waiter->lock, NULL) != 0)
+    rc = pthread_mutex_init(&waiter->lock, NULL);
+    if (rc != 0) {
+        errno = rc;
         return -1;
-    if (pthread_cond_init(&waiter->cv, NULL) != 0) {
+    }
+    rc = pthread_cond_init(&waiter->cv, NULL);
+    if (rc != 0) {
         pthread_mutex_destroy(&waiter->lock);
+        errno = rc;
         return -1;
     }
     waiter->done = 0;
@@ -47,6 +55,29 @@ rtp_sync_waiter_destroy(rtp_sync_waiter *waiter)
     assert(waiter != NULL);
     pthread_cond_destroy(&waiter->cv);
     pthread_mutex_destroy(&waiter->lock);
+}
+
+rtp_sync_waiter *
+rtp_sync_waiter_ctor(void)
+{
+    rtp_sync_waiter *waiter;
+
+    waiter = calloc(1, sizeof(*waiter));
+    if (waiter == NULL)
+        return NULL;
+    if (rtp_sync_waiter_init(waiter) != 0) {
+        free(waiter);
+        return NULL;
+    }
+    return waiter;
+}
+
+void
+rtp_sync_waiter_dtor(rtp_sync_waiter *waiter)
+{
+    assert(waiter != NULL);
+    rtp_sync_waiter_destroy(waiter);
+    free(waiter);
 }
 
 int

@@ -26,6 +26,8 @@ typedef struct {
 
 int rtp_sync_waiter_init(rtp_sync_waiter *waiter);
 void rtp_sync_waiter_destroy(rtp_sync_waiter *waiter);
+rtp_sync_waiter *rtp_sync_waiter_ctor(void);
+void rtp_sync_waiter_dtor(rtp_sync_waiter *waiter);
 int rtp_sync_waiter_reset(rtp_sync_waiter *waiter);
 void rtp_sync_waiter_complete(rtp_sync_waiter *waiter, int status);
 int rtp_sync_waiter_wait(rtp_sync_waiter *waiter);
