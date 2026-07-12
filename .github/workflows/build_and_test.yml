@@ -97,16 +97,21 @@ jobs:
       shell: bash
 
   build_wheels:
-    name: Build Python Wheels
+    name: Build Python Wheels (Linux)
     permissions:
       packages: write
     needs: build_test_python
     uses: sippy/cimagic/.github/workflows/BuildPythonWheels.yml@v3
 
+  build_win_mac_wheels:
+    name: Build Python Wheels (Windows/macOS)
+    needs: build_test_python
+    uses: sippy/cimagic/.github/workflows/BuildWinMacWheels.yml@wip
+
   publish_all_wheels:
     name: Publish Python Wheels
     runs-on: ubuntu-latest
-    needs: build_wheels
+    needs: [build_wheels, build_win_mac_wheels]
     environment:
       name: pypi
       url: https://pypi.org/p/rtpsynth
