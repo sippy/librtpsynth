@@ -106,7 +106,7 @@ jobs:
   build_win_mac_wheels:
     name: Build Python Wheels (Windows/macOS)
     needs: build_test_python
-    uses: sippy/cimagic/.github/workflows/BuildWinMacWheels.yml@wip
+    uses: sippy/cimagic/.github/workflows/BuildWinMacWheels.yml@v3
 
   publish_all_wheels:
     name: Publish Python Wheels
