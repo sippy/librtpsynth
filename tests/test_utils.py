@@ -3,26 +3,26 @@ import random
 import unittest
 
 from rtpsynth.RtpUtils import RtpUtils
-from rtpsynth.RtpUtils import linear2ulaw, resample_linear, ulaw2linear
+from rtpsynth.RtpUtils import linear2alaw, alaw2linear, linear2ulaw, resample_linear, ulaw2linear
 
 _BIAS = 0x84
 _CLIP = 32635
 
 
 def ref_linear2ulaw(sample: int) -> int:
-    sign = 0x80 if sample < 0 else 0
-    if sample < 0:
-        sample = -sample
-    if sample > _CLIP:
-        sample = _CLIP
-    sample += _BIAS
-    exponent = 7
-    mask = 0x4000
-    while exponent > 0 and (sample & mask) == 0:
-        exponent -= 1
-        mask >>= 1
-    mantissa = (sample >> (exponent + 3)) & 0x0F
-    return ~(sign | (exponent << 4) | mantissa) & 0xFF
+    # ITU-T G.191 STL g711.c ulaw_compress, 14-bit left-justified PCM.
+    # Strict range checking: out-of-range raises ValueError
+    if sample < -32768 or sample > 32767:
+        raise ValueError("PCM sample out of range [-32768, 32767]")
+    magnitude = ((~sample if sample < 0 else sample) >> 2) + 33
+    magnitude = min(magnitude, 0x1FFF)
+    segment = 1
+    remaining = magnitude >> 6
+    while remaining:
+        segment += 1
+        remaining >>= 1
+    code = ((8 - segment) << 4) | (15 - ((magnitude >> segment) & 15))
+    return code | (0x80 if sample >= 0 else 0)
 
 
 def ref_ulaw2linear(ulaw: int) -> int:
@@ -67,6 +67,8 @@ def ref_resample_linear(pcm: array, in_rate: int, out_rate: int) -> array:
 
 class TestRtpUtils(unittest.TestCase):
     def test_module_level_exports(self):
+        self.assertEqual(linear2alaw(0), 0xD5)
+        self.assertEqual(alaw2linear(0xD5), 8)
         self.assertEqual(linear2ulaw(1234), ref_linear2ulaw(1234))
         self.assertEqual(ulaw2linear(0xFF), ref_ulaw2linear(0xFF))
         src = array("h", [0, 1000, -1000])
@@ -76,8 +78,41 @@ class TestRtpUtils(unittest.TestCase):
         )
 
     def test_linear2ulaw_scalar(self):
-        for sample in (-50000, -32768, -12345, -1, 0, 1, 12345, 32767, 50000):
+        # Valid range: expect matching reference
+        for sample in (-32768, -12345, -1, 0, 1, 12345, 32767):
             self.assertEqual(RtpUtils.linear2ulaw(sample), ref_linear2ulaw(sample))
+        # Out-of-range: expect ValueError
+        for sample in (-50000, 50000):
+            with self.assertRaises(ValueError):
+                RtpUtils.linear2ulaw(sample)
+
+    def test_alaw_encode_scalar(self):
+        from rtpsynth import RtpUtils as module
+        # Test against reference via comprehensive test hash
+        import hashlib
+        from array import array
+        pcm = array('h', range(-32768, 32768))
+        encoded = module.linear2alaw(pcm)
+        # Hash must match ITU reference
+        expected_hash = '38488f6fd710f4686360edc4d38639f96c491595ef93f8eb8d62d5e07ca6ce7b'
+        self.assertEqual(hashlib.sha256(encoded).hexdigest(), expected_hash)
+        # Valid endpoints
+        self.assertEqual(module.linear2alaw(0), 0xD5)
+        self.assertEqual(module.linear2alaw(1), 0xD5)
+        self.assertEqual(module.linear2alaw(-1), 0x55)
+
+    def test_alaw_decode_scalar(self):
+        from rtpsynth import RtpUtils as module
+        # Canonical vectors
+        self.assertEqual(module.alaw2linear(0xD5), 8)
+        self.assertEqual(module.alaw2linear(0x55), -8)
+        self.assertEqual(module.alaw2linear(0xAA), 32256)
+        self.assertEqual(module.alaw2linear(0x2A), -32256)
+        # Out-of-range codewords raise ValueError
+        with self.assertRaises(ValueError):
+            module.alaw2linear(256)
+        with self.assertRaises(ValueError):
+            module.alaw2linear(-1)
 
     def test_ulaw2linear_scalar(self):
         for ulaw in range(256):

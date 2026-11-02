@@ -10,15 +10,90 @@
 #include <Python.h>
 
 #define MODULE_NAME "rtpsynth.RtpUtils"
-#define ULAW_BIAS 0x84
-#define ULAW_CLIP 32635
 
 static PyTypeObject PyRtpUtilsType;
 static PyObject *g_array_ctor = NULL;
 
-static uint8_t g_pcm16_to_ulaw[65536];
-static int16_t g_ulaw_to_pcm[256];
-static int g_tables_ready = 0;
+#include "g711_tables.h"
+#include <assert.h>
+
+/* One shared bit-length lookup selects the segment; shifts select mantissa.
+ * One's-complement magnitude preserves the ITU negative decision thresholds.
+ * Table format: high nibble = segment, low nibble = shift (4 for B=0, else B+3).
+ */
+static inline uint8_t
+alaw_encode_sample(int16_t sample)
+{
+    int neg = (sample < 0);
+    uint16_t mag = neg ? (uint16_t)(~(uint16_t)sample) : (uint16_t)sample;
+    uint8_t entry;
+    unsigned shift;
+    unsigned packed;
+
+    assert((mag >> 8) < (sizeof(g_g711_segment) / sizeof(g_g711_segment[0])));
+    entry = g_g711_segment[mag >> 8];
+    shift = entry & 0x0F;
+    assert((entry >> 4) <= 7);
+    assert(shift >= 4 && shift <= 10);
+    packed = (entry & 0xF0) | ((mag >> shift) & 0x0F);
+
+    return (uint8_t)(packed ^ (neg ? 0x55 : 0xD5));
+}
+
+/* Compact μ-law encoder: ITU-T G.191 algorithm, no loops.
+ * absno = ((~sample if negative: sample) >> 2) + 33, cap 8191.
+ * segno = 1 + (g_g711_segment[absno >> 6] >> 4) (index 0..127 gives seg 1..8).
+ * high = 8 - segno, low = 15 - ((absno >> segno) & 0x0F).
+ * Result: (high << 4) | low, OR 0x80 if positive.
+ */
+static inline uint8_t
+ulaw_encode_sample(int16_t sample)
+{
+    uint16_t absno;
+    uint8_t segno;
+    uint16_t low;
+    uint16_t high;
+    int neg;
+
+    neg = (sample < 0);
+    absno = neg ? ((uint16_t)(~(uint16_t)sample) >> 2) + 33
+                : ((uint16_t)sample >> 2) + 33;
+    if (absno > 8191)
+        absno = 8191;
+
+    /* absno >> 6 is 0..127; bit length is 0..7, segno is 1..8. */
+    assert((absno >> 6) < (sizeof(g_g711_segment) / sizeof(g_g711_segment[0])));
+    segno = 1 + (g_g711_segment[absno >> 6] >> 4);
+    assert(segno >= 1 && segno <= 8);
+
+    /* High nibble: 8 - segno */
+    high = 8 - segno;
+
+    /* Low nibble: 15 - ((absno >> segno) & 0x0F) */
+    low = 15 - ((absno >> segno) & 0x0F);
+
+    uint16_t packed = (high << 4) | low;
+    if (!neg)
+        packed |= 0x80;
+
+    return (uint8_t)packed;
+}
+
+/* A-law decode: table lookup */
+static inline int16_t
+alaw_decode_sample(uint8_t codeword)
+{
+    assert((unsigned)codeword < (sizeof(g_alaw_to_pcm) / sizeof(g_alaw_to_pcm[0])));
+    return g_alaw_to_pcm[codeword];
+}
+
+/* μ-law decode: table lookup */
+static inline int16_t
+ulaw_decode_sample(uint8_t codeword)
+{
+    assert((unsigned)codeword < (sizeof(g_ulaw_to_pcm) / sizeof(g_ulaw_to_pcm[0])));
+    return g_ulaw_to_pcm[codeword];
+}
 
 static int
 floor_ll(double x, long long *out)
@@ -63,67 +138,6 @@ round_half_even_ll(double x, long long *out)
         return -1;
     *out = fl + 1;
     return 0;
-}
-
-static uint8_t
-linear2ulaw_scalar(long long sample)
-{
-    int sign = sample < 0 ? 0x80 : 0;
-    int exponent = 7;
-    int mask = 0x4000;
-    int mantissa;
-    int ulaw;
-    long long mag = sample;
-
-    if (mag < 0)
-        mag = -mag;
-    if (mag > ULAW_CLIP)
-        mag = ULAW_CLIP;
-    mag += ULAW_BIAS;
-
-    while (exponent > 0 && ((mag & mask) == 0)) {
-        exponent -= 1;
-        mask >>= 1;
-    }
-
-    mantissa = (int)((mag >> (exponent + 3)) & 0x0F);
-    ulaw = ~(sign | (exponent << 4) | mantissa) & 0xFF;
-    return (uint8_t)ulaw;
-}
-
-static int16_t
-ulaw2linear_scalar(uint8_t ulaw)
-{
-    int sign;
-    int exponent;
-    int mantissa;
-    int sample;
-
-    ulaw = (uint8_t)((~ulaw) & 0xFF);
-    sign = ulaw & 0x80;
-    exponent = (ulaw >> 4) & 0x07;
-    mantissa = ulaw & 0x0F;
-    sample = ((mantissa << 3) + ULAW_BIAS) << exponent;
-    sample -= ULAW_BIAS;
-    if (sign != 0)
-        sample = -sample;
-    return (int16_t)sample;
-}
-
-static void
-ensure_tables(void)
-{
-    int i;
-
-    if (g_tables_ready != 0)
-        return;
-
-    for (i = -32768; i <= 32767; i++) {
-        g_pcm16_to_ulaw[(uint16_t)(i + 32768)] = linear2ulaw_scalar((long long)i);
-    }
-    for (i = 0; i < 256; i++)
-        g_ulaw_to_pcm[i] = ulaw2linear_scalar((uint8_t)i);
-    g_tables_ready = 1;
 }
 
 static PyObject *
@@ -324,6 +338,112 @@ done:
     return out;
 }
 
+/* Scalar A-law encoder with strict range checking */
+static PyObject *
+PyRtpUtils_linear2alaw(PyObject *self, PyObject *args)
+{
+    PyObject *obj;
+    PyObject *out = NULL;
+    Py_buffer view;
+    int16_t *samples = NULL;
+    int16_t *owned = NULL;
+    Py_ssize_t nsamples = 0;
+    unsigned char *outp;
+    Py_ssize_t i;
+    (void)self;
+
+    if (!PyArg_ParseTuple(args, "O:linear2alaw", &obj))
+        return NULL;
+
+    if (PyLong_Check(obj)) {
+        long long sample;
+        int overflow;
+        sample = PyLong_AsLongLongAndOverflow(obj, &overflow);
+        if (overflow || PyErr_Occurred()) {
+            PyErr_SetString(PyExc_ValueError, "PCM sample out of range [-32768, 32767]");
+            return NULL;
+        }
+        if (sample < -32768 || sample > 32767) {
+            PyErr_SetString(PyExc_ValueError, "PCM sample out of range [-32768, 32767]");
+            return NULL;
+        }
+        return PyLong_FromLong((long)alaw_encode_sample((int16_t)sample));
+    }
+
+    if (pcm16_from_obj(obj, &samples, &nsamples, &view, &owned) != 0)
+        return NULL;
+
+    out = PyBytes_FromStringAndSize(NULL, nsamples);
+    if (out == NULL)
+        goto done;
+    outp = (unsigned char *)PyBytes_AS_STRING(out);
+
+    for (i = 0; i < nsamples; i++) {
+        outp[i] = alaw_encode_sample(samples[i]);
+    }
+
+done:
+    PyMem_Free(owned);
+    PyBuffer_Release(&view);
+    return out;
+}
+
+static PyObject *
+PyRtpUtils_alaw2linear(PyObject *self, PyObject *args)
+{
+    PyObject *obj;
+    PyObject *out = NULL;
+    Py_buffer view;
+    int16_t *out_samples = NULL;
+    Py_ssize_t i;
+    (void)self;
+
+    if (!PyArg_ParseTuple(args, "O:alaw2linear", &obj))
+        return NULL;
+
+    if (PyLong_Check(obj)) {
+        long long alaw;
+        int overflow;
+        alaw = PyLong_AsLongLongAndOverflow(obj, &overflow);
+        if (overflow || PyErr_Occurred()) {
+            PyErr_SetString(PyExc_ValueError, "A-law codeword out of range [0, 255]");
+            return NULL;
+        }
+        if (alaw < 0 || alaw > 255) {
+            PyErr_SetString(PyExc_ValueError, "A-law codeword out of range [0, 255]");
+            return NULL;
+        }
+        return PyLong_FromLong((long)alaw_decode_sample((uint8_t)alaw));
+    }
+
+    memset(&view, 0, sizeof(view));
+    if (PyObject_GetBuffer(obj, &view, PyBUF_CONTIG_RO) != 0)
+        return NULL;
+
+    if (view.itemsize != 1) {
+        PyErr_SetString(PyExc_TypeError, "alaw2linear expects bytes-like input");
+        goto done;
+    }
+
+    if (view.len > 0) {
+        const unsigned char *in = (const unsigned char *)view.buf;
+        out_samples = PyMem_Malloc((size_t)view.len * sizeof(*out_samples));
+        if (out_samples == NULL) {
+            PyErr_NoMemory();
+            goto done;
+        }
+        for (i = 0; i < view.len; i++)
+            out_samples[i] = alaw_decode_sample(in[i]);
+    }
+
+    out = array_h_from_pcm16(out_samples, view.len);
+
+done:
+    PyMem_Free(out_samples);
+    PyBuffer_Release(&view);
+    return out;
+}
+
 static PyObject *
 PyRtpUtils_linear2ulaw(PyObject *self, PyObject *args)
 {
@@ -337,16 +457,22 @@ PyRtpUtils_linear2ulaw(PyObject *self, PyObject *args)
     Py_ssize_t i;
     (void)self;
 
-    ensure_tables();
-
     if (!PyArg_ParseTuple(args, "O:linear2ulaw", &obj))
         return NULL;
 
     if (PyLong_Check(obj)) {
-        long long sample = PyLong_AsLongLong(obj);
-        if (PyErr_Occurred())
+        long long sample;
+        int overflow;
+        sample = PyLong_AsLongLongAndOverflow(obj, &overflow);
+        if (overflow || PyErr_Occurred()) {
+            PyErr_SetString(PyExc_ValueError, "PCM sample out of range [-32768, 32767]");
             return NULL;
-        return PyLong_FromLong((long)linear2ulaw_scalar(sample));
+        }
+        if (sample < -32768 || sample > 32767) {
+            PyErr_SetString(PyExc_ValueError, "PCM sample out of range [-32768, 32767]");
+            return NULL;
+        }
+        return PyLong_FromLong((long)ulaw_encode_sample((int16_t)sample));
     }
 
     if (pcm16_from_obj(obj, &samples, &nsamples, &view, &owned) != 0)
@@ -358,8 +484,7 @@ PyRtpUtils_linear2ulaw(PyObject *self, PyObject *args)
     outp = (unsigned char *)PyBytes_AS_STRING(out);
 
     for (i = 0; i < nsamples; i++) {
-        uint16_t idx = (uint16_t)((int)samples[i] + 32768);
-        outp[i] = g_pcm16_to_ulaw[idx];
+        outp[i] = ulaw_encode_sample(samples[i]);
     }
 
 done:
@@ -378,16 +503,22 @@ PyRtpUtils_ulaw2linear(PyObject *self, PyObject *args)
     Py_ssize_t i;
     (void)self;
 
-    ensure_tables();
-
     if (!PyArg_ParseTuple(args, "O:ulaw2linear", &obj))
         return NULL;
 
     if (PyLong_Check(obj)) {
-        long long ulaw = PyLong_AsLongLong(obj);
-        if (PyErr_Occurred())
+        long long ulaw;
+        int overflow;
+        ulaw = PyLong_AsLongLongAndOverflow(obj, &overflow);
+        if (overflow || PyErr_Occurred()) {
+            PyErr_SetString(PyExc_ValueError, "μ-law codeword out of range [0, 255]");
             return NULL;
-        return PyLong_FromLong((long)g_ulaw_to_pcm[(uint8_t)(ulaw & 0xFFLL)]);
+        }
+        if (ulaw < 0 || ulaw > 255) {
+            PyErr_SetString(PyExc_ValueError, "μ-law codeword out of range [0, 255]");
+            return NULL;
+        }
+        return PyLong_FromLong((long)ulaw_decode_sample((uint8_t)ulaw));
     }
 
     memset(&view, 0, sizeof(view));
@@ -407,7 +538,7 @@ PyRtpUtils_ulaw2linear(PyObject *self, PyObject *args)
             goto done;
         }
         for (i = 0; i < view.len; i++)
-            out_samples[i] = g_ulaw_to_pcm[in[i]];
+            out_samples[i] = ulaw_decode_sample(in[i]);
     }
 
     out = array_h_from_pcm16(out_samples, view.len);
@@ -419,6 +550,8 @@ done:
 }
 
 static PyMethodDef PyRtpUtils_methods[] = {
+    {"linear2alaw", (PyCFunction)PyRtpUtils_linear2alaw, METH_VARARGS | METH_STATIC, NULL},
+    {"alaw2linear", (PyCFunction)PyRtpUtils_alaw2linear, METH_VARARGS | METH_STATIC, NULL},
     {"resample_linear", (PyCFunction)PyRtpUtils_resample_linear, METH_VARARGS | METH_STATIC, NULL},
     {"linear2ulaw", (PyCFunction)PyRtpUtils_linear2ulaw, METH_VARARGS | METH_STATIC, NULL},
     {"ulaw2linear", (PyCFunction)PyRtpUtils_ulaw2linear, METH_VARARGS | METH_STATIC, NULL},
@@ -426,6 +559,8 @@ static PyMethodDef PyRtpUtils_methods[] = {
 };
 
 static PyMethodDef RtpUtils_module_methods[] = {
+    {"linear2alaw", (PyCFunction)PyRtpUtils_linear2alaw, METH_VARARGS, NULL},
+    {"alaw2linear", (PyCFunction)PyRtpUtils_alaw2linear, METH_VARARGS, NULL},
     {"resample_linear", (PyCFunction)PyRtpUtils_resample_linear, METH_VARARGS, NULL},
     {"linear2ulaw", (PyCFunction)PyRtpUtils_linear2ulaw, METH_VARARGS, NULL},
     {"ulaw2linear", (PyCFunction)PyRtpUtils_ulaw2linear, METH_VARARGS, NULL},

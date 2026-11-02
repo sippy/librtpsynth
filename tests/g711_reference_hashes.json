@@ -1,0 +1,10 @@
+{
+  "source": "https://github.com/openitu/STL/blob/c7a690846ecb401df5fb518849108303ba1ff173/src/g711/g711.c",
+  "source_sha256": "bd95a6589fd4318abb156c747d2082b27529a0d43dd0eea2726114ce40f537a9",
+  "sha256": {
+    "alaw_compress": "38488f6fd710f4686360edc4d38639f96c491595ef93f8eb8d62d5e07ca6ce7b",
+    "ulaw_compress": "90c29de505fb68e766118303bd552a16005dcf810873698bee1d8f3b247ce28c",
+    "alaw_expand": "e04788d110e58ff8c70c93b8480190d973e3b67876b6119abbaec766cc75c174",
+    "ulaw_expand": "3dab54339e520bb2c924826e3b72a917a2b612e9fd12fc867500f1d983a75827"
+  }
+}

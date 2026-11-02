@@ -71,6 +71,7 @@ module2 = Extension('rtpsynth.RtpJBuf', sources = rtpjbuf_ext_srcs, \
     extra_compile_args = extra_compile_args)
 
 module3 = Extension('rtpsynth.RtpUtils', sources = rtputils_ext_srcs, \
+    depends = ['python/g711_tables.h'], \
     include_dirs = ['src'], \
     extra_link_args = rtputils_link_args, \
     extra_compile_args = extra_compile_args)
