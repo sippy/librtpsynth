@@ -1,5 +1,8 @@
 # librtpsynth
 
+[![Build, Test & Publish](https://github.com/sippy/librtpsynth/actions/workflows/build_and_test.yml/badge.svg)](https://github.com/sippy/librtpsynth/actions/workflows/build_and_test.yml)
+[![PyPI version](https://img.shields.io/pypi/v/rtpsynth.svg)](https://pypi.org/project/rtpsynth/)
+
 Low-level library optimized to generate and/or consume sequence of the RTP
 packets. Based on some code and ideas from the RTPProxy projects.
 
